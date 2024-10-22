@@ -201,6 +201,7 @@ def draw_dashboard(stdscr):
         for i in range(1, 5):
             if os.path.exists(os.path.join(source_dir, f"profile{i}_{args.gpu_number}.bnt")):
                 profile_exists[i] = True
+    fan_policy = ctypes.c_uint()
     num_gpus = nv.nvmlDeviceGetCount()
     gpu_name = nv.nvmlDeviceGetName(gpu)
     default_power_limit = nv.nvmlDeviceGetPowerManagementDefaultLimit(gpu) / 1000
@@ -217,7 +218,6 @@ def draw_dashboard(stdscr):
             current_mem_offset = current_mem_offset - 4294966
         core_offset_sign = add_sign(current_core_offset)
         mem_offset_sign = add_sign(current_mem_offset)
-        fan_policy = ctypes.c_uint()
         nv.nvmlDeviceGetFanControlPolicy_v2(gpu, 0, ctypes.byref(fan_policy))
         fan_policy_str = "Manual" if fan_policy.value == 1 else "Auto"
         fan_speed = nv.nvmlDeviceGetFanSpeed(gpu)
