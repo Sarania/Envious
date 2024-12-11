@@ -85,7 +85,7 @@ def draw_dashboard(stdscr):
         """
         stdscr.addstr(input_start, 0, f"Loading profile {profile_number} for GPU {args.gpu_number}!")
         try:
-            with open(os.path.join(source_dir, f"profile{profile_number}_{args.gpu_number}.bnt"), "r", encoding="utf-8") as file:
+            with open(os.path.join(profile_dir, f"profile{profile_number}_{args.gpu_number}.bnt"), "r", encoding="utf-8") as file:
                 new_core_offset = int(file.readline())
                 new_mem_offset = int(file.readline())
                 new_power_limit = int(file.readline())
@@ -128,7 +128,7 @@ def draw_dashboard(stdscr):
         Saves current settings to the specified profile number.
         """
         stdscr.addstr(input_start, 0, f"Current settings will be saved as profile {profile_number} for GPU {args.gpu_number}!")
-        with open(os.path.join(source_dir, f"profile{profile_number}_{args.gpu_number}.bnt"), "w", encoding="utf-8") as file:
+        with open(os.path.join(profile_dir, f"profile{profile_number}_{args.gpu_number}.bnt"), "w", encoding="utf-8") as file:
             file.write(str(int(current_core_offset)) + "\n")
             file.write(str(int(current_mem_offset)) + "\n")
             file.write(str(int(current_power_limit)) + "\n")
@@ -140,7 +140,7 @@ def draw_dashboard(stdscr):
         """
         Simply deletes the specified profile
         """
-        profile_path = os.path.join(source_dir, f"profile{profile_number}_{args.gpu_number}.bnt")
+        profile_path = os.path.join(profile_dir, f"profile{profile_number}_{args.gpu_number}.bnt")
         if os.path.exists(profile_path):
             os.remove(profile_path)
             stdscr.addstr(input_start, 0, f"Deleted profile {profile_number} for GPU {args.gpu_number}!")
@@ -199,7 +199,7 @@ def draw_dashboard(stdscr):
                 time.sleep(1)
             sys.exit()
         for i in range(1, 5):
-            if os.path.exists(os.path.join(source_dir, f"profile{i}_{args.gpu_number}.bnt")):
+            if os.path.exists(os.path.join(profile_dir, f"profile{i}_{args.gpu_number}.bnt")):
                 profile_exists[i] = True
     fan_policy = ctypes.c_uint()
     num_gpus = nv.nvmlDeviceGetCount()
@@ -428,7 +428,7 @@ def draw_dashboard(stdscr):
                     default_power_limit = nv.nvmlDeviceGetPowerManagementDefaultLimit(gpu) / 1000
                     for i in range(1, 5):
                         profile_exists[i] = False
-                        if os.path.exists(os.path.join(source_dir, f"profile{i}_{args.gpu_number}.bnt")):
+                        if os.path.exists(os.path.join(profile_dir, f"profile{i}_{args.gpu_number}.bnt")):
                             profile_exists[i] = True
                     active_profile = last_active_profile[args.gpu_number]
                 except nv.NVMLError as e:
@@ -446,7 +446,7 @@ def draw_dashboard(stdscr):
                     default_power_limit = nv.nvmlDeviceGetPowerManagementDefaultLimit(gpu) / 1000
                     for i in range(1, 5):
                         profile_exists[i] = False
-                        if os.path.exists(os.path.join(source_dir, f"profile{i}_{args.gpu_number}.bnt")):
+                        if os.path.exists(os.path.join(profile_dir, f"profile{i}_{args.gpu_number}.bnt")):
                             profile_exists[i] = True
                     active_profile = last_active_profile[args.gpu_number]
                 except nv.NVMLError as e:
@@ -577,7 +577,7 @@ def draw_dashboard(stdscr):
 
 
 # Execution begins here
-source_dir = os.path.dirname(os.path.abspath(__file__))
+profile_dir = "/usr/share/envious"
 args = parser.parse_args()
 try:
     nv.nvmlInit()
@@ -674,7 +674,7 @@ if args.set_clocks or args.set_power_limit or args.set_max_fan or args.set_auto_
         profile_number = args.set_profile
         print(f"Loading profile {profile_number} for GPU {args.gpu_number}!")
         try:
-            with open(os.path.join(source_dir, f"profile{profile_number}_{args.gpu_number}.bnt"), "r", encoding="utf-8") as file:
+            with open(os.path.join(profile_dir, f"profile{profile_number}_{args.gpu_number}.bnt"), "r", encoding="utf-8") as file:
                 new_core_offset = int(file.readline())
                 new_mem_offset = int(file.readline())
                 new_power_limit = int(file.readline())
