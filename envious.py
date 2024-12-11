@@ -1,6 +1,7 @@
+#!/usr/bin/env python3
 """
 =================================================
-                  Blissful Nvidia Tool
+                  Envious
 =================================================
 Description:
 Simple CLI tool for monitoring and overclocking Nvidia Graphics Cards
@@ -30,13 +31,13 @@ Created on: Tue Oct 1, 2024
 @author: Blyss Sarania
 =================================================
 """
-__VERSION__ = "1.30"
+__VERSION__ = "1.40"
 import os
 import sys
 import time
 import argparse
 import pynvml as nv
-parser = argparse.ArgumentParser(description="Blissful Nvidia Tool")
+parser = argparse.ArgumentParser(description="Envious")
 parser.add_argument("--gpu-number", type=int, default=0, help="Specify the GPU index (default: 0)")
 parser.add_argument("--refresh-rate", type=int, default=1000, help="Specify how often to refresh the monitor, in milliseconds. Default is 1000")
 parser.add_argument("--reactive-color", action='store_true', help="Uses color to indicate the intensity of values")
@@ -76,8 +77,8 @@ def draw_dashboard(stdscr):
         """
         Simple function to show the header
         """
-        stdscr.addstr(0, 0, "                    Blissful Nvidia Tool", MAGENTA)
-        stdscr.addstr(1, 0, "------------------------------------------------------------")
+        stdscr.addstr(0, 0, "                          Envious", MAGENTA)
+        stdscr.addstr(1, 0, "-----------------------------------------------------------")
 
     def load_profile(profile_number):
         """
@@ -598,7 +599,7 @@ except nv.NVMLError as e:
 
 # If this check is true we run in offline mode, else we run in online mode
 if args.set_clocks or args.set_power_limit or args.set_max_fan or args.set_auto_fan or args.set_custom_fan or args.set_profile:
-    print(f"{ANSI_MAGENTA}Blissful Nvidia Tool Offline Mode{NC}")
+    print(f"{ANSI_MAGENTA}Envious Offline Mode{NC}")
     print("_________________________________________")
     print(f"{ANSI_YELLOW}User accepts ALL risks of overclocking/altering power limits/fan settings!{NC}")
     print("Additionally, root permission is needed for these changes and they will fail to apply without it.")
