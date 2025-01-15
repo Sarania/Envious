@@ -1,5 +1,5 @@
 <div align="center">
-  <h1>Blissful Nvidia Tool</h1>
+  <h1>Envious</h1>
   <img src="screenshot.png?version=3" alt="Blissful Nvidia Tool" />
 </div>
 
