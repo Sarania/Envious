@@ -30,7 +30,7 @@ python envious.py --gpu-number 1 --set-power-limit 280 --set-max-fan  # Set the 
 # Additionally, an optional install script can be used to install the tool:
 sudo ./install.sh
 # Then you can:
-envious --interactive
+sudo envious --interactive
 # And also
 man envious  # For full command list!
 ```
