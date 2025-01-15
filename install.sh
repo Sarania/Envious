@@ -1,5 +1,12 @@
 #!/bin/bash
-echo "Envious installer v0.2"
+echo "Envious installer"
+echo "This script needs root permissions and will install envious.py to /usr/bin/envious, set it executable, and install the man page to /usr/share/man/man1/envious1.gz"
+echo "Additionally it will create the directory /var/lib/envious for storing profiles if it does not already exist."
+read -p "Is that acceptable? (y/N): " confirmation
+if [[ "$confirmation" != "y" && "$confirmation" != "Y" ]]; then
+    echo "Aborted."
+    exit 0
+fi
 if [ "$(id -u)" -ne 0 ]; then
     echo "This script must be run as root."
     exit 66
