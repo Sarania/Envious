@@ -1,11 +1,10 @@
 #!/bin/bash
-echo "Envious installer v0.1"
+echo "Envious installer v0.2"
 if [ "$(id -u)" -ne 0 ]; then
     echo "This script must be run as root."
     exit 66
 fi
-echo "Removing old binary..."
-echo "Installing new binary..."
+echo "Installing binary to /usr/bin/envious..."
 sudo cp envious.py /usr/bin/envious
 echo "Configuring permissions..."
 sudo chmod +x /usr/bin/envious
