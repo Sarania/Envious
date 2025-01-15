@@ -17,15 +17,18 @@ License: MIT
 ## Usage
 
 ```
+# From within the Envious directory:
 python envious.py  # Run a monitor for the GPU
 python envious.py --reactive-color  # Run a colorful monitor for the GPU
 # Any of the below need root/admin permissions!
-python envious.py --interactive # Run the monitor in interactive mode. h for help!
+python envious.py --interactive # Run the monitor in interactive mode to enable clock, power and fan control. h for help!
 python envious.py --set-clocks -150 1000  # Set the GPU core offset to -150Mhz and GPU memory offset to +1000Mhz. 
 # Note the memory value is the same as that specified in GreenWithEnvy/MSI Afterburner, NOT the same as nvidia-settings!
-python envious.py --set-power-limit 300  # Set the power limit in watts. nvidia-ml-py will reject invalid values. 
-python envious.py --set-max-fan  # Set ALL fans to maximum speed.
-python envious.py --set-auto-fan  # Set ALL fans back to automatic control.
+python envious.py --set-power-limit 300 --set-max-fan # Set the power limit in watts(nvidia-ml-py will reject invalid values) and set all fans to 100%.
 # Additionally you can specify which GPU to monitor or control with --gpu-number:
 python envious.py --gpu-number 1 --set-power-limit 280  # Set the power limit to 280 Watts on GPU 1 (0 is 1st, 1 is 2nd, etc...)
+# Additionally, an optional install script can be used to install the tool:
+sudo ./install.sh
+# Then you can:
+envious --interactive
 ```
