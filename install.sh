@@ -1,9 +1,17 @@
 #!/bin/bash
-source /home/blyss/scripts/util.sh
-watermark "Envious installer v0.1"
-checkroot
-sudo rm /usr/bin/envious
+echo "Envious installer v0.1"
+if [ "$(id -u)" -ne 0 ]; then
+    echo "This script must be run as root."
+    exit 66
+fi
+echo "Removing old binary..."
+echo "Installing new binary..."
 sudo cp envious.py /usr/bin/envious
+echo "Configuring permissions..."
 sudo chmod +x /usr/bin/envious
-sudo mkdir -p /usr/share/envious
-techo "${GREEN}Installed!"
+echo "Creating profile directory(/var/lib/envious)..."
+sudo mkdir -p /var/lib/envious
+echo "Installing man page..."
+sudo rm /usr/share/man/man1/envious.1.gz -f
+sudo gzip -c envious.1 > /usr/share/man/man1/envious.1.gz
+echo "Install completed!"

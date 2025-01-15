@@ -4,7 +4,7 @@
                   Envious
 =================================================
 Description:
-Simple CLI tool for monitoring and overclocking Nvidia Graphics Cards
+Envious is a powerful terminal based tool for managing Nvidia graphics cards. It supports overclocking, profiles, fan control, and more.
 
 Dependencies:
 nvidia-ml-py > 11.5 for all features. pynvml /may/ also work.
@@ -198,7 +198,7 @@ def draw_dashboard(stdscr):
                 stdscr.addstr(2, 2, f"Shutting down in {4 - i}s...")
                 stdscr.refresh()
                 time.sleep(1)
-            sys.exit()
+            sys.exit(8)
         for i in range(1, 5):
             if os.path.exists(os.path.join(profile_dir, f"profile{i}_{args.gpu_number}.bnt")):
                 profile_exists[i] = True
@@ -279,7 +279,7 @@ def draw_dashboard(stdscr):
         key = stdscr.getch()
         if key == ord("q"):
             nv.nvmlShutdown()
-            sys.exit(1)
+            sys.exit(0)
         elif key == ord("h"):
             stdscr.nodelay(False)
             stdscr.clear()
@@ -412,7 +412,7 @@ def draw_dashboard(stdscr):
                 key = stdscr.getch()
                 if key == ord("q"):
                     nv.nvmlShutdown()
-                    sys.exit(1)
+                    sys.exit(0)
         elif args.interactive and key in [curses.KEY_F1, curses.KEY_F2, curses.KEY_F3, curses.KEY_F4, curses.KEY_RIGHT, curses.KEY_LEFT, ord("1"), ord("2"), ord("3"), ord("4"), ord("!"), ord("@"), ord("#"), ord("$"), ord("c"), ord("m"), ord("p"), ord("f"), ord("a")]:
             current_profile = active_profile
             active_profile = 0
@@ -578,7 +578,7 @@ def draw_dashboard(stdscr):
 
 
 # Execution begins here
-profile_dir = "/usr/share/envious"
+profile_dir = "/var/lib/envious"
 args = parser.parse_args()
 try:
     nv.nvmlInit()

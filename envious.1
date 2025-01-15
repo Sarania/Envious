@@ -1,0 +1,108 @@
+.TH ENVIOUS 1 "December 2024" "envious 1.4" "User Commands"
+.SH NAME
+envious \- Advanced tool for GPU management from the command line
+.SH SYNOPSIS
+.B envious
+[\fIOPTIONS...\fR]
+
+.SH DESCRIPTION
+Envious is a friendly, feature-rich application for administering modern Nvidia GPUs (Maxwell or higher) directly from your Linux command line.
+
+It only requires Python 3 and the \fBnvidia-ml-py\fR libraries along with up-to-date Nvidia drivers. Using envious, you can overclock or underclock your GPU, adjust power limits, control fan speeds, and view near real-time monitoring information through a built-in curses-based interface. Profiles can be saved and loaded for convenience, and the tool can operate non-interactively for scripting purposes.
+
+While monitoring can be performed as a normal user, many of the overclocking, power management, and fan control operations will require root privileges. Use this tool responsibly, as you accept \fBall\fR risks associated with making changes to your GPU’s settings.
+
+License: MIT
+
+.SH OPTIONS
+
+.TP
+\fB--gpu-number \fINUMBER\fR
+Specify the GPU index to operate on. Defaults to 0 if omitted.
+
+.TP
+\fB--refresh-rate \fIMILLISECONDS\fR
+Specify how frequently the monitor updates the display, in milliseconds. Defaults to 1000 ms.
+
+.TP
+\fB--reactive-color\fR
+Enable color-coded output to indicate the intensity or severity of monitored values.
+
+.TP
+\fB--no-color\fR
+Disable all color output, useful for plain terminal usage or when piping output.
+
+.TP
+\fB--interactive\fR
+Enable an interactive curses-based monitoring mode. Requires root privileges.
+Within interactive mode, type "h" for help.
+
+.TP
+\fB--set-clocks \fICOREFREQ MEMFREQ\fR
+Set the GPU’s core and memory clock offsets (in MHz).
+Requires root.
+Example:
+.B envious --set-clocks -150 500
+
+.TP
+\fB--set-power-limit \fIWATTS\fR
+Set the GPU’s power limit (in watts).
+Requires root.
+Example:
+.B envious --set-power-limit 300
+
+.TP
+\fB--set-custom-fan \fIPERCENTAGE\fR
+Set a custom fan speed percentage, forcing the fan control policy to manual.
+Requires root. Valid values range from 30 to 100. Use with caution!
+
+.TP
+\fB--set-profile \fIID\fR
+Apply one of your previously created custom profiles by its ID.
+Requires root.
+
+.TP
+\fB--set-max-fan\fR
+Set all fans to their maximum speed.
+Requires root.
+
+.TP
+\fB--set-auto-fan\fR
+Reset fan control to the automatic mode.
+Requires root.
+
+.SH EXAMPLES
+
+Run envious with default options in monitor mode:
+.nf
+envious
+.fi
+
+Monitor GPU #1 without colors:
+.nf
+envious --gpu-number 1 --no-color
+.fi
+
+Set custom core and memory clock offsets:
+.nf
+sudo envious --set-clocks -150 500
+.fi
+
+Set both a custom fan speed and power limit:
+.nf
+sudo envious --set-custom-fan 80 --set-power-limit 300
+.fi
+
+Use the interactive mode:
+.nf
+sudo envious --interactive
+.fi
+
+.SH AUTHOR
+Developed by Blyss Sarania.
+
+.SH SEE ALSO
+nvidia-smi(1), pynvml documentation, nvidia-ml-py documentation.
+
+.SH BUGS
+Please report any bugs or issues via the project's issue tracker or relevant support channels.
