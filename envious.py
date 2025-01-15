@@ -578,7 +578,12 @@ def draw_dashboard(stdscr):
 
 
 # Execution begins here
-profile_dir = "/var/lib/envious"
+execution_path = os.path.dirname(os.path.realpath(__file__))
+if execution_path == "/usr/bin":
+    profile_dir = "/var/lib/envious"
+else:
+    profile_dir = execution_path
+
 args = parser.parse_args()
 try:
     nv.nvmlInit()
@@ -708,7 +713,7 @@ if args.set_clocks or args.set_power_limit or args.set_max_fan or args.set_auto_
         except nv.NVMLError as e:
             print(f"{ANSI_WARN}Some kind of NVML error prevented the profile loading: {e}{NC}")
         except FileNotFoundError:
-            print("{ANSI_WARN}Profile was not found!{NC}")
+            print(f"{ANSI_WARN}Profile was not found!{NC}")
 else:
     #  Interactive mode
     import ctypes
