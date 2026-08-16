@@ -4,7 +4,8 @@
                   Envious
 =================================================
 Description:
-Envious is a powerful terminal based tool for managing Nvidia graphics cards. It supports overclocking, profiles, fan control, and more.
+Envious is a powerful terminal based tool for managing Nvidia graphics cards.
+It supports overclocking, profiles, fan control, and more.
 
 Dependencies:
 nvidia-ml-py > 11.5 for all features. pynvml /may/ also work.
@@ -16,708 +17,1359 @@ MIT License - See below for full text
 =================================================
 Copyright (c) 2024 Blyss Sarania
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"),
-to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
-and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 =================================================
 Created on: Tue Oct 1, 2024
 @author: Blyss Sarania
 =================================================
 """
-__VERSION__ = "1.40"
+
+import argparse
 import os
 import sys
+import textwrap
 import time
-import argparse
+
 import pynvml as nv
-parser = argparse.ArgumentParser(description="Envious")
-parser.add_argument("--gpu-number", type=int, default=0, help="Specify the GPU index (default: 0)")
-parser.add_argument("--refresh-rate", type=int, default=1000, help="Specify how often to refresh the monitor, in milliseconds. Default is 1000")
-parser.add_argument("--reactive-color", action='store_true', help="Uses color to indicate the intensity of values")
-parser.add_argument("--no-color", action='store_true', help="Disable the use of any color at all")
-parser.add_argument("--interactive", action='store_true', help="This and those below need root/superuser. Enable interactive mode for monitor. Type \"h\" for help")
-parser.add_argument("--set-clocks", nargs=2, type=int, help="Needs root. Set core and memory clock offsets (in MHz) respectively. Example: --set-clocks -150 500")
-parser.add_argument("--set-power-limit", type=int, help="Set the power limit (in watts). Example: --set-power-limit 300")
-parser.add_argument("--set-custom-fan", type=int, help="Set a custom fan percentage. !BE CAREFUL! as this changes the fan control policy to manual!!! Only values 30-100 are accepted. ")
-parser.add_argument("--set-profile", type=int, help="Apply one of the custom profiles you've created.")
-parser.add_argument("--set-max-fan", action='store_true', help="Set all fans to maximum speed")
-parser.add_argument("--set-auto-fan", action='store_true', help="Reset fan control to automatic mode")
+
+__VERSION__ = "1.60"
 
 
-def add_sign(offset):
-    """
-    Helper function to add a + sign to positive numbers and output them back
-    """
-    return f"+{offset}" if offset > 0 else offset
+def parse_args() -> argparse.Namespace:
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description="Envious")
+    parser.add_argument(
+        "--gpu-number", type=int, default=0, help="Specify the GPU index (default: 0)"
+    )
+    parser.add_argument(
+        "--refresh-rate",
+        type=int,
+        default=1000,
+        help="Specify how often to refresh the monitor, in milliseconds. Default is 1000",
+    )
+    parser.add_argument(
+        "--reactive-color",
+        action="store_true",
+        help="Uses color to indicate the intensity of values",
+    )
+    parser.add_argument(
+        "--no-color", action="store_true", help="Disable the use of any color at all"
+    )
+    parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help='(root) Enable interactive mode for monitor. Type "h" for help',
+    )
+    parser.add_argument(
+        "--set-clocks",
+        nargs=2,
+        type=int,
+        help="(root) Set core and memory clock offsets (in MHz) respectively. "
+        "Example: --set-clocks -150 500",
+    )
+    parser.add_argument(
+        "--set-power-limit",
+        type=int,
+        help="(root) Set the power limit (in watts). Example: --set-power-limit 300",
+    )
+    parser.add_argument(
+        "--set-custom-fan",
+        type=int,
+        help="(root) Set a custom fan percentage. !BE CAREFUL! as this changes the fan control "
+        "policy to manual!!! Only values 30-100 are accepted.",
+    )
+    parser.add_argument(
+        "--set-profile",
+        type=int,
+        help="(root) Apply one of the custom profiles you've created.",
+    )
+    parser.add_argument(
+        "--set-max-fan",
+        action="store_true",
+        help="(root) Set all fans to maximum speed",
+    )
+    parser.add_argument(
+        "--set-auto-fan",
+        action="store_true",
+        help="(root) Restore fan control to automatic mode",
+    )
+    parser.add_argument(
+        "--accept-risks",
+        action="store_true",
+        help="Suppress any warning messages normally printed in CLI mode(for making logging less noisy). User accepts ALL risks of overclocking/altering power limits/fan settings! No effect in interactive mode.",
+    )
+    return parser.parse_args()
 
 
-def draw_dashboard(stdscr):
-    """
-    Main function for drawing monitor, takes in a screen pointer
-    """
-    def set_color(value, threshold_caution, threshold_warn):
-        """
-        Helper function to return color values based on current readings, takes in the value and thresholds to check
-        """
-        if threshold_caution < value < threshold_warn:
-            return YELLOW
-        elif value > threshold_warn:
-            return RED
-        else:
-            return GREEN
+def add_sign(offset) -> str:
+    """Return a string with a '+' prefix for positive numbers."""
+    return f"+{offset}" if offset > 0 else str(offset)
 
-    def header():
-        """
-        Simple function to show the header
-        """
-        stdscr.addstr(0, 0, "                          Envious", MAGENTA)
-        stdscr.addstr(1, 0, "-----------------------------------------------------------")
 
-    def load_profile(profile_number):
-        """
-        Loads a profile and applies settings. Takes in which profile to load
-        """
-        stdscr.addstr(input_start, 0, f"Loading profile {profile_number} for GPU {args.gpu_number}!")
+class EnviousApp:
+    """Main application class for both offline and interactive modes."""
+
+    def __init__(self, args: argparse.Namespace, gpu):
+        self.args = args
+        self.gpu = gpu
+        self.gpu_name = nv.nvmlDeviceGetName(gpu)
+        self.num_gpus = nv.nvmlDeviceGetCount()
+        self.default_power_limit = (
+            nv.nvmlDeviceGetPowerManagementDefaultLimit(gpu) / 1000
+        )
+        self.profile_dir = self._determine_profile_dir()
+
+        self.use_color = not args.no_color and (
+            os.getenv("TERM") != "dumb" and os.getenv("TERM") is not None
+        )
+
+        # ANSI color codes for offline mode
+        self.ansi_warn = "\033[0;33;40m" if self.use_color else ""
+        self.ansi_yellow = "\033[0;33m" if self.use_color else ""
+        self.ansi_magenta = "\033[0;35m" if self.use_color else ""
+        self.ansi_green = "\033[0;32m" if self.use_color else ""
+        self.nc = "\033[0m" if self.use_color else ""
+
+        # Curses state (initialised in interactive mode)
+        self.curses = None
+        self.psutil = None
+        self.input_start = 14
+        self.profile_exists = [False] * 5
+        self.active_profile = 0
+        self.last_active_profile = []
+        self.fan_policy = None
+        self.fan_warning_done = False
+        self.max_text_width = 59
+        self.mid_ref = 0
+
+    @staticmethod
+    def _determine_profile_dir() -> str:
+        """Return the directory where profiles are stored."""
+        exec_path = os.path.dirname(os.path.realpath(__file__))
+        return "/var/lib/envious" if exec_path == "/usr/bin" else exec_path
+
+    # ----------------------------------------------------------------------
+    # Offline / CLI mode
+    # ----------------------------------------------------------------------
+    def run_offline(self) -> None:
+        """Execute the non‑interactive (offline) commands."""
+
+        def print_space_or_dont() -> None:
+            """Adds a blank line in the more verbose mode else not"""
+            if not self.args.accept_risks:
+                print()
+
+        if not self.args.accept_risks:
+            print(f"{self.ansi_magenta}Envious Offline Mode{self.nc}")
+            print("_________________________________________")
+            print(
+                f"{self.ansi_yellow}User accepts ALL risks of overclocking/altering power limits/fan settings!{self.nc}"
+            )
+            print(
+                "Additionally, root permission is needed for these changes and they will fail to apply without it."
+            )
+            print()
+            print("Enabling persistence...")
         try:
-            with open(os.path.join(profile_dir, f"profile{profile_number}_{args.gpu_number}.bnt"), "r", encoding="utf-8") as file:
-                new_core_offset = int(file.readline())
-                new_mem_offset = int(file.readline())
-                new_power_limit = int(file.readline())
-                new_fan_policy = int(file.readline())
-                new_fan_speed = int(file.readline())
-                stdscr.addstr(input_start + 1, 0, f"Setting core clock offset to {add_sign(new_core_offset)} Mhz...")
-                nv.nvmlDeviceSetGpcClkVfOffset(gpu, new_core_offset)
-                stdscr.addstr(input_start + 2, 0, f"Setting mem clock offset to {add_sign(new_mem_offset)} Mhz...")
-                nv.nvmlDeviceSetMemClkVfOffset(gpu, new_mem_offset * 2)
-                stdscr.addstr(input_start + 3, 0, f"Setting core power limit to {new_power_limit}...")
-                nv.nvmlDeviceSetPowerManagementLimit(gpu, new_power_limit * 1000)
-                if new_fan_policy == 1:
-                    if 101 > new_fan_speed > 29:
-                        stdscr.addstr(input_start + 4, 0, f"Setting fan policy to manual and fan speed to {new_fan_speed}%...")
-                        num_fans = nv.nvmlDeviceGetNumFans(gpu)
-                        for i in range(0, num_fans):
-                            nv.nvmlDeviceSetFanControlPolicy(gpu, i, nv.NVML_FAN_POLICY_MANUAL)
-                            nv.nvmlDeviceSetFanSpeed_v2(gpu, i, new_fan_speed)
-                    else:
-                        raise ValueError("Invalid fan speed setting in profile!")
-                else:
-                    stdscr.addstr(input_start + 4, 0, "Setting fan policy to automatic control...")
-                    num_fans = nv.nvmlDeviceGetNumFans(gpu)
-                    for i in range(0, num_fans):
-                        nv.nvmlDeviceSetFanControlPolicy(gpu, i, nv.NVML_FAN_POLICY_TEMPERATURE_CONTINOUS_SW)
-                        nv.nvmlDeviceSetDefaultFanSpeed_v2(gpu, i)
-            return profile_number
-        except ValueError as e:
-            stdscr.addstr(input_start + 1, 0, f"Some kind of value error prevented the profile loading: {e}")
-            return 66
+            nv.nvmlDeviceSetPersistenceMode(self.gpu, 1)
         except nv.NVMLError as e:
-            stdscr.addstr(input_start + 1, 0, f"Some kind of NVML error prevented the profile loading: {e}")
-            return 66
-        except FileNotFoundError:
-            stdscr.addstr(input_start + 1, 0, "Profile was not found!")
-            return 66
+            print(
+                f"{self.ansi_warn}Some kind of NVML error prevented applying the requested change: {e}{self.nc}"
+            )
+        print_space_or_dont()
 
-    def save_profile(profile_number):
-        """
-        Saves current settings to the specified profile number.
-        """
-        stdscr.addstr(input_start, 0, f"Current settings will be saved as profile {profile_number} for GPU {args.gpu_number}!")
-        with open(os.path.join(profile_dir, f"profile{profile_number}_{args.gpu_number}.bnt"), "w", encoding="utf-8") as file:
-            file.write(str(int(current_core_offset)) + "\n")
-            file.write(str(int(current_mem_offset)) + "\n")
-            file.write(str(int(current_power_limit)) + "\n")
-            file.write(str(fan_policy.value) + "\n")
-            file.write(str(fan_speed) + "\n")
-        profile_exists[profile_number] = True
+        if self.args.set_max_fan:
+            self._offline_set_max_fan()
+        elif self.args.set_auto_fan:
+            self._offline_set_auto_fan()
+        elif self.args.set_custom_fan:
+            self._offline_set_custom_fan()
+        print_space_or_dont()
+        if self.args.set_clocks:
+            self._offline_set_clocks()
+        if self.args.set_power_limit:
+            self._offline_set_power_limit()
+        if self.args.set_profile:
+            self._offline_load_profile(self.args.set_profile)
+        print_space_or_dont()
 
-    def delete_profile(profile_number):
-        """
-        Simply deletes the specified profile
-        """
-        profile_path = os.path.join(profile_dir, f"profile{profile_number}_{args.gpu_number}.bnt")
-        if os.path.exists(profile_path):
-            os.remove(profile_path)
-            stdscr.addstr(input_start, 0, f"Deleted profile {profile_number} for GPU {args.gpu_number}!")
-            profile_exists[profile_number] = False
-        else:
-            stdscr.addstr(input_start, 0, f"Nope, profile {profile_number} doesn't exist so we can't delete it, silly!")
-    global gpu
-    stdscr.clear()
-    curses.curs_set(0)    # Hide cursor
-    curses.echo()
-    if curses.has_colors():
-        curses.use_default_colors()
-        if USE_COLOR:
-            curses.start_color()
-            curses.init_pair(1, curses.COLOR_GREEN, -1)
-            GREEN = curses.color_pair(1)
-            curses.init_pair(2, curses.COLOR_RED, -1)
-            RED = curses.color_pair(2)
-            curses.init_pair(3, curses.COLOR_CYAN, -1)
-            CYAN = curses.color_pair(3)
-            curses.init_pair(4, curses.COLOR_YELLOW, -1)
-            YELLOW = curses.color_pair(4)
-            curses.init_pair(5, curses.COLOR_MAGENTA, -1)
-            MAGENTA = curses.color_pair(5)
-            curses.init_pair(6, curses.COLOR_BLUE, -1)
-            BLUE = curses.color_pair(6)
-            curses.init_pair(7, curses.COLOR_WHITE, -1)
-            WHITE = curses.color_pair(7)
-            try:  # Try to initalize an 8th color pair but fall back for limited color environment
-                curses.init_pair(8, 8, -1)
-                GRAY = curses.color_pair(8)
-            except ValueError:
-                GRAY = CYAN
-        else:
-            GRAY = CYAN = RED = GREEN = WHITE = curses.A_NORMAL
-            YELLOW = BLUE = MAGENTA = curses.A_BOLD
-    temp_color = WHITE
-    power_color = WHITE
-    clock_color = WHITE
-    mem_clock_color = WHITE
-    mem_util_color = WHITE
-    util_color = WHITE
-    vram_color = WHITE
-    delay = 0
-    active_profile = 0
-    profile_exists = [False, False, False, False, False]  # We create this with an extra phantom element at position 0 to make the code easier to maintain, we only use 1-4
-    last_active_profile = [0, 0, 0, 0, 0, 0, 0, 0]
-    if args.interactive:
-        try:
-            nv.nvmlDeviceSetPersistenceMode(gpu, 1)
-        except nv.NVMLError as e:
-            stdscr.addstr(1, 2, f"Unable to set driver to persistent for interactive mode: {e}")
-            for i in range(0, 4):
-                stdscr.addstr(2, 2, f"Shutting down in {4 - i}s...")
-                stdscr.refresh()
-                time.sleep(1)
-            sys.exit(8)
-        for i in range(1, 5):
-            if os.path.exists(os.path.join(profile_dir, f"profile{i}_{args.gpu_number}.bnt")):
-                profile_exists[i] = True
-    fan_policy = ctypes.c_uint()
-    num_gpus = nv.nvmlDeviceGetCount()
-    gpu_name = nv.nvmlDeviceGetName(gpu)
-    default_power_limit = nv.nvmlDeviceGetPowerManagementDefaultLimit(gpu) / 1000
-    stdscr.nodelay(True)
-    while True:
-        stdscr.clear()
-        current_core_offset = nv.nvmlDeviceGetGpcClkVfOffset(gpu)
-        current_mem_offset = nv.nvmlDeviceGetMemClkVfOffset(gpu) / 2
-        #  If the offset is negative, pynvml may return a value that is munged by truncated overflow
-        #  Since offsets will never legitimately be this large, this should be a safe fix.
-        if current_core_offset > 100000:
-            current_core_offset = current_core_offset - 4294966
-        if current_mem_offset > 100000:
-            current_mem_offset = current_mem_offset - 4294966
-        core_offset_sign = add_sign(current_core_offset)
-        mem_offset_sign = add_sign(current_mem_offset)
-        nv.nvmlDeviceGetFanControlPolicy_v2(gpu, 0, ctypes.byref(fan_policy))
-        fan_policy_str = "Manual" if fan_policy.value == 1 else "Auto"
-        fan_speed = nv.nvmlDeviceGetFanSpeed(gpu)
-        current_temperature = nv.nvmlDeviceGetTemperature(gpu, 0)
-        current_power_usage = nv.nvmlDeviceGetPowerUsage(gpu) / 1000  # Convert mW to W
-        utilization = nv.nvmlDeviceGetUtilizationRates(gpu)
-        mem_info = nv.nvmlDeviceGetMemoryInfo(gpu)
-        core_clock = nv.nvmlDeviceGetClockInfo(gpu, nv.NVML_CLOCK_GRAPHICS)
-        core_clock_str = f"{core_clock} Mhz ({core_offset_sign} Mhz)" if current_core_offset != 0 else f"{core_clock} Mhz"
-        max_core_clock = nv.nvmlDeviceGetMaxClockInfo(gpu, nv.NVML_CLOCK_GRAPHICS)
-        max_mem_clock = nv.nvmlDeviceGetMaxClockInfo(gpu, nv.NVML_CLOCK_MEM)
-        mem_clock = nv.nvmlDeviceGetClockInfo(gpu, nv.NVML_CLOCK_MEM)
-        mem_clock_str = f"{mem_clock} Mhz ({mem_offset_sign} Mhz)" if current_mem_offset != 0 else f"{mem_clock} Mhz"
-        current_power_limit = nv.nvmlDeviceGetPowerManagementLimit(gpu) / 1000
-        current_power_offset = current_power_limit - default_power_limit
-        power_offset_str = add_sign(current_power_offset)
-        current_power_percentage = (current_power_usage / current_power_limit) * 100
-        current_clock_percentage = (core_clock / max_core_clock) * 100
-        current_mem_clock_percentage = (mem_clock / max_mem_clock) * 100
-        current_vram_percentage = (mem_info.used / mem_info.total) * 100
-        if args.reactive_color:
-            temp_color = set_color(current_temperature, 65, 80)
-            power_color = set_color(current_power_percentage, 70, 90)
-            clock_color = set_color(current_clock_percentage, 70, 90)
-            mem_clock_color = set_color(current_mem_clock_percentage, 70, 90)
-            util_color = set_color(utilization.gpu, 70, 90)
-            mem_util_color = set_color(utilization.memory, 70, 90)
-            vram_color = set_color(current_vram_percentage, 70, 90)
-        header()
-        if args.interactive:
-            for i in range(1, 5):
-                if USE_COLOR:
-                    profile_color = YELLOW if active_profile == i else BLUE if profile_exists[i] else GRAY
-                else:
-                    profile_color = curses.A_BOLD if active_profile == i else curses.A_NORMAL if profile_exists[i] else None
-                if profile_color is not None:
-                    stdscr.addstr(2, 23 + (4 * (i - 1)), f"{i}", profile_color)
-        stdscr.addstr(3, 2, "GPU: ", YELLOW)
-        stdscr.addstr(4, 2, "Core Clock Freq: ", YELLOW)
-        stdscr.addstr(5, 2, "Mem Clock Freq: ", YELLOW)
-        stdscr.addstr(6, 2, "Temp/Fan: ", YELLOW)
-        stdscr.addstr(7, 2, "Power: ", YELLOW)
-        stdscr.addstr(8, 2, "VRAM Usage: ", YELLOW)
-        stdscr.addstr(9, 2, "GPU Core Usage: ", YELLOW)
-        stdscr.addstr(10, 2, "Mem Controller: ", YELLOW)
-        stdscr.addstr(3, 22, f"{args.gpu_number} - {gpu_name}", GREEN)
-        stdscr.addstr(4, 22, f"{core_clock_str}", clock_color)
-        stdscr.addstr(5, 22, f"{mem_clock_str}", mem_clock_color)
-        stdscr.addstr(6, 22, f"{current_temperature}°C | {fan_speed}% ({fan_policy_str})", temp_color)
-        stdscr.addstr(7, 22, f"{current_power_usage:.2f} / {current_power_limit:.2f} W ({power_offset_str} W)", power_color)
-        stdscr.addstr(8, 22, f"{mem_info.used / (1024**2):.2f} / {mem_info.total / (1024**2):.2f} MB", vram_color)
-        stdscr.addstr(9, 22, f"{utilization.gpu}%", util_color)
-        stdscr.addstr(10, 22, f"{utilization.memory}%", mem_util_color)
-        stdscr.addstr(12, 2, "Press \"h\" for help or \"q\" to quit!")
-        input_start = 14
-        stdscr.refresh()
-        stdscr.timeout(args.refresh_rate)
-        key = stdscr.getch()
-        if key == ord("q"):
-            nv.nvmlShutdown()
-            sys.exit(0)
-        elif key == ord("h"):
-            stdscr.nodelay(False)
-            stdscr.clear()
-            header()
-            stdscr.addstr(3, 0, "Blissful Legend:", BLUE)
-            stdscr.addstr(5, 2, "h", YELLOW)
-            stdscr.addstr(5, 6, "- show this help screen.")
-            stdscr.addstr(6, 2, "i", YELLOW)
-            stdscr.addstr(6, 6, "- switch to process monitor with extra info")
-            if args.interactive:  # Only show interactive help if we are in interactive mode
-                stdscr.addstr(7, 2, "c", YELLOW)
-                stdscr.addstr(8, 2, "m", YELLOW)
-                stdscr.addstr(9, 2, "p", YELLOW)
-                stdscr.addstr(10, 2, "f", YELLOW)
-                stdscr.addstr(11, 2, "a", YELLOW)
-                if num_gpus > 1:  # Only show the multi gpu help if more than one is available
-                    stdscr.addstr(12, 2, "<->", YELLOW)
-                    stdscr.addstr(12, 6, "- switch between available GPUs")
-                    help_offset = 1
-                else:
-                    help_offset = 0
-                stdscr.addstr(12 + help_offset, 2, "1", YELLOW)
-                stdscr.addstr(13 + help_offset, 2, "F1", YELLOW)
-                stdscr.addstr(14 + help_offset, 2, "!", YELLOW)
-                stdscr.addstr(7, 6, "- set new core clock offset")
-                stdscr.addstr(8, 6, "- set new mem clock offset")
-                stdscr.addstr(9, 6, "- set new power limit")
-                stdscr.addstr(10, 6, "- set manual fan percentage")
-                stdscr.addstr(10, 33, "(CAUTION: This sets your fan control policy to manual meaning it WON'T adapt to temperature!)", YELLOW)
-                stdscr.addstr(11, 6, "- set fan control back to auto")
-                stdscr.addstr(12 + help_offset, 6, "- save profile")
-                stdscr.addstr(12 + help_offset, 20, "(also 2, 3, 4)", YELLOW)
-                stdscr.addstr(13 + help_offset, 6, "- load profile")
-                stdscr.addstr(13 + help_offset, 20, "(also F2, F3, F4)", YELLOW)
-                stdscr.addstr(14 + help_offset, 6, "- delete profile")
-                stdscr.addstr(14 + help_offset, 22, "(also @, #, $ e.g. SHIFT + profile number)", YELLOW)
-                stdscr.addstr(16 + help_offset, 0, "Press a key to return to the monitor!")
-            else:
-                stdscr.addstr(8, 0, "Press a key to return to the monitor!")
-            stdscr.refresh()
-            stdscr.getch()
-            stdscr.nodelay(True)
-        elif key == ord("i"):
-            key = ""
-            try:
-                nvml_version = nv.nvmlSystemGetNVMLVersion()
-            except nv.NVMLError:
-                nvml_version = "Unknown"
-            try:
-                max_gen = nv.nvmlDeviceGetMaxPcieLinkGeneration(gpu)
-                max_width = nv.nvmlDeviceGetMaxPcieLinkWidth(gpu)
-            except nv.NVMLError:
-                max_gen = "?"
-                max_width = "?"
-            try:
-                bar_size = nv.nvmlDeviceGetBAR1MemoryInfo(gpu)
-                bar_size = str((bar_size.bar1Total / 1024) / 1024) + " MB"
-            except nv.NVMLError:
-                bar_size = "Unknown"
-            try:
-                compute_version_major, compute_version_minor = nv.nvmlDeviceGetCudaComputeCapability(gpu)
-            except nv.NVMLError:
-                compute_version_major = "?"
-                compute_version_minor = "?"
-            try:
-                cuda_version = nv.nvmlSystemGetCudaDriverVersion_v2()
-                cuda_version_major = cuda_version // 1000
-                cuda_version_minor = (cuda_version % 1000) // 10
-            except nv.NVMLError:
-                cuda_version_major = "?"
-                cuda_version_minor = "?"
-            try:
-                driver_version = nv.nvmlSystemGetDriverVersion()
-            except nv.NVMLError:
-                driver_version = "Unknown"
-            try:
-                mem_bus_width = nv.nvmlDeviceGetMemoryBusWidth(gpu)
-            except nv.NVMLError:
-                mem_bus_width = "Unknown"
-            while not key == ord("i"):
-                stdscr.clear()
-                try:
-                    link_gen = nv.nvmlDeviceGetCurrPcieLinkGeneration(gpu)
-                    link_width = nv.nvmlDeviceGetCurrPcieLinkWidth(gpu)
-                except nv.NVMLError:
-                    link_gen = "?"
-                    link_width = "?"
-                try:
-                    compute_running_processes = nv.nvmlDeviceGetComputeRunningProcesses_v3(gpu)
-                    for process in compute_running_processes:
-                        setattr(process, "type", "Compute")
-                    graphics_running_processes = nv.nvmlDeviceGetGraphicsRunningProcesses_v3(gpu)
-                    for process in graphics_running_processes:
-                        setattr(process, "type", "Graphics")
-                    running_processes = graphics_running_processes + compute_running_processes
-                    running_processes = sorted(running_processes, key=lambda x: x.usedGpuMemory, reverse=True)
-                except nv.NVMLError:
-                    running_processes = "Unknown"
-                header()
-                stdscr.addstr(3, 0, "Extra info/Process Monitor:", BLUE)
-                stdscr.addstr(5, 2, "Device Name:", YELLOW)
-                stdscr.addstr(6, 2, "Driver/NVML Version:", YELLOW)
-                stdscr.addstr(7, 2, "Compute:", YELLOW)
-                stdscr.addstr(8, 2, "BAR1 Size:", YELLOW)
-                stdscr.addstr(9, 2, "PCI Express:", YELLOW)
-                stdscr.addstr(10, 2, "Memory bus:", YELLOW)
-                stdscr.addstr(11, 2, "Top Processes by VRAM:", YELLOW)
-                stdscr.addstr(5, 26, f"{gpu_name}", GREEN)
-                stdscr.addstr(6, 26, f"{driver_version} / {nvml_version}")
-                stdscr.addstr(7, 26, f"CC: {compute_version_major}.{compute_version_minor} | CUDA: {cuda_version_major}.{cuda_version_minor}")
-                stdscr.addstr(8, 26, f"{bar_size}")
-                stdscr.addstr(9, 26, f"Gen {link_gen}@{link_width}x / Gen {max_gen}@{max_width}x")
-                stdscr.addstr(10, 26, f"{mem_bus_width} bit")
-                if running_processes != "Unknown":
-                    list_length = min(5, len(running_processes))
-                    if list_length == 0:
-                        stdscr.addstr(13, 4, "0 -   None")
-                        stdscr.addstr(15, 0, "Press \"i\" key to return to the monitor or \"q\" to quit!")
-                    else:
-                        for i in range(0, list_length):
-                            number_color = curses.color_pair(i + 1) if USE_COLOR else WHITE
-                            stdscr.addstr(13 + i, 4, f"{i + 1}", number_color)
-                            stdscr.addstr(13 + i, 5, f" -   {psutil.Process(running_processes[i].pid).name()} -- ({(running_processes[i].usedGpuMemory / (1024**2)):.2f} MB) ({running_processes[i].type}) ")
-                        stdscr.addstr(14 + list_length, 0, "Press \"i\" key to return to the monitor or \"q\" to quit!")
-                else:
-                    stdscr.addstr(13, 4, "Unable to retrieve running processes!")
-                    stdscr.addstr(15, 0, "Press \"i\" key to return to the monitor or \"q\" to quit!")
-                stdscr.timeout(args.refresh_rate)
-                stdscr.refresh()
-                key = stdscr.getch()
-                if key == ord("q"):
-                    nv.nvmlShutdown()
-                    sys.exit(0)
-        elif args.interactive and key in [curses.KEY_F1, curses.KEY_F2, curses.KEY_F3, curses.KEY_F4, curses.KEY_RIGHT, curses.KEY_LEFT, ord("1"), ord("2"), ord("3"), ord("4"), ord("!"), ord("@"), ord("#"), ord("$"), ord("c"), ord("m"), ord("p"), ord("f"), ord("a")]:
-            current_profile = active_profile
-            active_profile = 0
-            stdscr.nodelay(False)
-            if key == curses.KEY_RIGHT and num_gpus > 1:
-                try:
-                    last_active_profile[args.gpu_number] = current_profile
-                    if args.gpu_number < num_gpus - 1:
-                        args.gpu_number += 1
-                    else:
-                        args.gpu_number = 0
-                    gpu = nv.nvmlDeviceGetHandleByIndex(args.gpu_number)
-                    gpu_name = nv.nvmlDeviceGetName(gpu)
-                    default_power_limit = nv.nvmlDeviceGetPowerManagementDefaultLimit(gpu) / 1000
-                    for i in range(1, 5):
-                        profile_exists[i] = False
-                        if os.path.exists(os.path.join(profile_dir, f"profile{i}_{args.gpu_number}.bnt")):
-                            profile_exists[i] = True
-                    active_profile = last_active_profile[args.gpu_number]
-                except nv.NVMLError as e:
-                    stdscr.addstr(input_start, 0, f"An NVMLError prevented the operation: {e}")
-                    delay = 2
-            elif key == curses.KEY_LEFT and num_gpus > 1:
-                try:
-                    last_active_profile[args.gpu_number] = current_profile
-                    if args.gpu_number > 0:
-                        args.gpu_number -= 1
-                    else:
-                        args.gpu_number = num_gpus - 1
-                    gpu = nv.nvmlDeviceGetHandleByIndex(args.gpu_number)
-                    gpu_name = nv.nvmlDeviceGetName(gpu)
-                    default_power_limit = nv.nvmlDeviceGetPowerManagementDefaultLimit(gpu) / 1000
-                    for i in range(1, 5):
-                        profile_exists[i] = False
-                        if os.path.exists(os.path.join(profile_dir, f"profile{i}_{args.gpu_number}.bnt")):
-                            profile_exists[i] = True
-                    active_profile = last_active_profile[args.gpu_number]
-                except nv.NVMLError as e:
-                    stdscr.addstr(input_start, 0, f"An NVMLError prevented the operation: {e}")
-                    delay = 2
-            elif key == ord("1"):
-                save_profile(1)
-                active_profile = 1
-                delay = 1
-            elif key == curses.KEY_F1:
-                active_profile = load_profile(1)
-                delay = 2
-            elif key == ord("!"):
-                delete_profile(1)
-                active_profile = current_profile if current_profile != 1 else 0
-                delay = 1
-            elif key == ord("2"):
-                save_profile(2)
-                active_profile = 2
-                delay = 1
-            elif key == curses.KEY_F2:
-                active_profile = load_profile(2)
-                delay = 2
-            elif key == ord("@"):
-                delete_profile(2)
-                active_profile = current_profile if current_profile != 2 else 0
-                delay = 1
-            elif key == ord("3"):
-                save_profile(3)
-                active_profile = 3
-                delay = 1
-            elif key == curses.KEY_F3:
-                active_profile = load_profile(3)
-                delay = 2
-            elif key == ord("#"):
-                delete_profile(3)
-                active_profile = current_profile if current_profile != 3 else 0
-                delay = 1
-            elif key == ord("4"):
-                save_profile(4)
-                active_profile = 4
-                delay = 1
-            elif key == curses.KEY_F4:
-                active_profile = load_profile(4)
-                delay = 2
-            elif key == ord("$"):
-                delete_profile(4)
-                active_profile = current_profile if current_profile != 4 else 0
-                delay = 1
-            elif key == ord("c"):
-                stdscr.addstr(input_start, 0, "Enter new core clock offset in Mhz:")
-                new_core_offset = stdscr.getstr(input_start, 36, 6)
-                try:
-                    new_core_offset = int(new_core_offset)
-                    stdscr.addstr(input_start + 1, 0, f"Setting core clock offset to {new_core_offset} MHz...")
-                    nv.nvmlDeviceSetGpcClkVfOffset(gpu, new_core_offset)
-                except ValueError:
-                    stdscr.addstr(input_start + 1, 0, "Invalid input! Please enter a valid number.")
-                    delay = 2
-                except nv.NVMLError as e:
-                    stdscr.addstr(input_start + 2, 0, f"Failed to set core clock offset: {str(e)}")
-                    delay = 2
-            elif key == ord("m"):
-                stdscr.addstr(input_start, 0, "Enter new mem clock offset in Mhz:")
-                new_mem_offset = stdscr.getstr(input_start, 35, 6)
-                try:
-                    new_mem_offset = int(new_mem_offset)
-                    stdscr.addstr(input_start + 1, 0, f"Setting mem clock offset to {new_mem_offset} MHz...")
-                    nv.nvmlDeviceSetMemClkVfOffset(gpu, new_mem_offset * 2)
-                except ValueError:
-                    stdscr.addstr(input_start + 1, 0, "Invalid input! Please enter a valid number.")
-                    delay = 2
-                except nv.NVMLError as e:
-                    stdscr.addstr(input_start + 2, 0, f"Failed to set mem clock offset: {str(e)}")
-                    delay = 2
-            elif key == ord("p"):
-                stdscr.addstr(input_start, 0, "Enter new power limit in watts:")
-                new_power_limit = stdscr.getstr(input_start, 32, 6)
-                try:
-                    new_power_limit = int(new_power_limit)
-                    stdscr.addstr(input_start + 1, 0, f"Setting power limit to {new_power_limit} W...")
-                    nv.nvmlDeviceSetPowerManagementLimit(gpu, new_power_limit * 1000)
-                except ValueError:
-                    stdscr.addstr(input_start + 1, 0, "Invalid input! Please enter a valid number.")
-                    delay = 2
-                except nv.NVMLError as e:
-                    stdscr.addstr(input_start + 2, 0, f"Failed to set power limit: {str(e)}")
-                    delay = 2
-            elif key == ord("f"):
-                stdscr.addstr(input_start, 0, "Enter new fan percentage between 30 and 100:")
-                new_fan_speed = stdscr.getstr(input_start, 45, 6)
-                try:
-                    new_fan_speed = int(new_fan_speed)
-                    stdscr.addstr(input_start + 1, 0, f"Setting fan speed to {new_fan_speed}%...")
-                    if 101 > new_fan_speed > 29:
-                        num_fans = nv.nvmlDeviceGetNumFans(gpu)
-                        for i in range(0, num_fans):
-                            nv.nvmlDeviceSetFanControlPolicy(gpu, i, nv.NVML_FAN_POLICY_MANUAL)
-                            nv.nvmlDeviceSetFanSpeed_v2(gpu, i, new_fan_speed)
-                        stdscr.addstr(input_start + 2, 0, "Fan control policy is now MANUAL... return it to AUTO with \"a\"", YELLOW)
-                        delay = 2
-                    else:
-                        raise ValueError("Between 30 and 100!")
-                except ValueError:
-                    stdscr.addstr(input_start + 1, 0, "Invalid input! Please enter a valid number.")
-                    delay = 2
-                except nv.NVMLError as e:
-                    stdscr.addstr(input_start + 1, 0, f"Failed to set fan speed: {str(e)}")
-                    delay = 2
-            elif key == ord("a"):
-                try:
-                    stdscr.addstr(input_start, 0, "Setting fans to automatic control...")
-                    num_fans = nv.nvmlDeviceGetNumFans(gpu)
-                    for i in range(0, num_fans):
-                        nv.nvmlDeviceSetFanControlPolicy(gpu, i, nv.NVML_FAN_POLICY_TEMPERATURE_CONTINOUS_SW)
-                        nv.nvmlDeviceSetDefaultFanSpeed_v2(gpu, i)
-                except nv.NVMLError as e:
-                    stdscr.addstr(input_start + 1, 0, f"Failed to set fan speed: {str(e)}")
-                    delay = 2
-            stdscr.refresh()
-            time.sleep(1 + delay)
-            delay = 0
-            stdscr.nodelay(True)
-            while key:  # Eat all the keys from the keyboard buffer to clear it for the next frame
-                key = stdscr.getch()
-                if key == -1:
-                    break
-
-
-# Execution begins here
-execution_path = os.path.dirname(os.path.realpath(__file__))
-if execution_path == "/usr/bin":
-    profile_dir = "/var/lib/envious"
-else:
-    profile_dir = execution_path
-
-args = parser.parse_args()
-try:
-    nv.nvmlInit()
-except nv.NVMLError as e:
-    print(f"Could not initialize NVML! The library reported: {e}")
-    sys.exit(8)
-USE_COLOR = not args.no_color and (os.getenv("TERM") != "dumb" and os.getenv("TERM") is not None)
-ANSI_WARN = "\033[0;33;40m" if USE_COLOR else ""
-ANSI_YELLOW = "\033[0;33m" if USE_COLOR else ""
-ANSI_MAGENTA = "\033[0;35m" if USE_COLOR else ""
-ANSI_GREEN = "\033[0;32m" if USE_COLOR else ""
-NC = "\033[0m" if USE_COLOR else ""
-try:
-    gpu = nv.nvmlDeviceGetHandleByIndex(args.gpu_number)
-except nv.NVMLError as e:
-    print(f"Could not initialize for GPU {args.gpu_number}! The library reported: {e}")
-    sys.exit(8)
-
-# If this check is true we run in offline mode, else we run in online mode
-if args.set_clocks or args.set_power_limit or args.set_max_fan or args.set_auto_fan or args.set_custom_fan or args.set_profile:
-    print(f"{ANSI_MAGENTA}Envious Offline Mode{NC}")
-    print("_________________________________________")
-    print(f"{ANSI_YELLOW}User accepts ALL risks of overclocking/altering power limits/fan settings!{NC}")
-    print("Additionally, root permission is needed for these changes and they will fail to apply without it.")
-    print()
-    print("Enabling persistence...")
-    try:
-        nv.nvmlDeviceSetPersistenceMode(gpu, 1)
-    except nv.NVMLError as e:
-        print(f"{ANSI_WARN}Some kind of NVML error prevented applying the requested change: {e}{NC}")
-    print()
-    if args.set_max_fan:
-        num_fans = nv.nvmlDeviceGetNumFans(gpu)
+    def _offline_set_max_fan(self) -> None:
+        num_fans = nv.nvmlDeviceGetNumFans(self.gpu)
         print(f"Found {num_fans} fans!")
         print("Attempting to set fans to max speed...")
-        for i in range(0, num_fans):
+        for i in range(num_fans):
             try:
-                nv.nvmlDeviceSetFanControlPolicy(gpu, i, nv.NVML_FAN_POLICY_MANUAL)
-                nv.nvmlDeviceSetFanSpeed_v2(gpu, i, 100)
-                print(f"{ANSI_GREEN}Fan {i} set to max speed!{NC}")
+                nv.nvmlDeviceSetFanControlPolicy(self.gpu, i, nv.NVML_FAN_POLICY_MANUAL)
+                nv.nvmlDeviceSetFanSpeed_v2(self.gpu, i, 100)
+                print(f"{self.ansi_green}Fan {i} set to max speed!{self.nc}")
             except nv.NVMLError as e:
-                print(f"{ANSI_WARN}Some kind of NVML error prevented applying the requested change: {e}{NC}")
-        print()
-    elif args.set_auto_fan:
-        num_fans = nv.nvmlDeviceGetNumFans(gpu)
+                print(
+                    f"{self.ansi_warn}Some kind of NVML error prevented applying the requested change: {e}{self.nc}"
+                )
+
+    def _offline_set_auto_fan(self) -> None:
+        num_fans = nv.nvmlDeviceGetNumFans(self.gpu)
         print(f"Found {num_fans} fans!")
         print("Attempting to restore fans to automatic control...")
-        for i in range(0, num_fans):
+        for i in range(num_fans):
             try:
-                nv.nvmlDeviceSetFanControlPolicy(gpu, i, nv.NVML_FAN_POLICY_TEMPERATURE_CONTINOUS_SW)
-                nv.nvmlDeviceSetDefaultFanSpeed_v2(gpu, i)
-                print(f"{ANSI_GREEN}Fan {i} restored to automatic control!{NC}")
+                nv.nvmlDeviceSetFanControlPolicy(
+                    self.gpu, i, nv.NVML_FAN_POLICY_TEMPERATURE_CONTINOUS_SW
+                )
+                nv.nvmlDeviceSetDefaultFanSpeed_v2(self.gpu, i)
+                print(
+                    f"{self.ansi_green}Fan {i} restored to automatic control!{self.nc}"
+                )
             except nv.NVMLError as e:
-                print(f"{ANSI_WARN}Some kind of NVML error prevented applying the requested change: {e}{NC}")
-        print()
-    elif args.set_custom_fan:
-        new_speed = args.set_custom_fan
+                print(
+                    f"{self.ansi_warn}Some kind of NVML error prevented applying the requested change: {e}{self.nc}"
+                )
+
+    def _offline_set_custom_fan(self) -> None:
+        new_speed = self.args.set_custom_fan
         if 101 > new_speed > 29:
-            num_fans = nv.nvmlDeviceGetNumFans(gpu)
+            num_fans = nv.nvmlDeviceGetNumFans(self.gpu)
             print(f"Found {num_fans} fans!")
             print(f"Attempting to set fans to {new_speed}%...")
-            for i in range(0, num_fans):
+            for i in range(num_fans):
                 try:
-                    nv.nvmlDeviceSetFanControlPolicy(gpu, i, nv.NVML_FAN_POLICY_MANUAL)
-                    nv.nvmlDeviceSetFanSpeed_v2(gpu, i, new_speed)
-                    print(f"{ANSI_GREEN}Fan {i} set to {new_speed}%! {ANSI_YELLOW}Fan control policy is now MANUAL!{NC}")
+                    nv.nvmlDeviceSetFanControlPolicy(
+                        self.gpu, i, nv.NVML_FAN_POLICY_MANUAL
+                    )
+                    nv.nvmlDeviceSetFanSpeed_v2(self.gpu, i, new_speed)
+                    print(
+                        f"{self.ansi_green}Fan {i} set to {new_speed}%! "
+                        f"{self.ansi_yellow}Fan control policy is now MANUAL!{self.nc}"
+                    )
                 except nv.NVMLError as e:
-                    print(f"{ANSI_WARN}Some kind of NVML error prevented applying the requested change: {e}{NC}")
-            print()
+                    print(
+                        f"{self.ansi_warn}Some kind of NVML error prevented applying the requested change: {e}{self.nc}"
+                    )
         elif new_speed > 100:
-            print(f"{ANSI_WARN}Value {new_speed} invalid for fan control!{NC}")
+            print(
+                f"{self.ansi_warn}Value {new_speed} invalid for fan control!{self.nc}"
+            )
         else:
-            print(f"{ANSI_WARN}Refusing to set fans below 30%! Sorry!{NC}")
-            print()
-    if args.set_clocks:
-        core_offset, mem_offset = args.set_clocks
-        print(f"Attempting to set core clock offset to {core_offset} MHz and memory clock offset to {mem_offset} MHz...")
+            print(f"{self.ansi_warn}Refusing to set fans below 30%! Sorry!{self.nc}")
+
+    def _offline_set_clocks(self) -> None:
+        core_offset, mem_offset = self.args.set_clocks
+        print(
+            f"Attempting to set core clock offset to {core_offset} MHz and "
+            f"memory clock offset to {mem_offset} MHz..."
+        )
         try:
-            nv.nvmlDeviceSetGpcClkVfOffset(gpu, core_offset)
-            nv.nvmlDeviceSetMemClkVfOffset(gpu, mem_offset * 2)  # Multiply memoffset by 2 so it's equivalent to offset in GWE and Windows
-            print(f"{ANSI_GREEN}Set core clock offset to {core_offset} MHz and memory clock offset to {mem_offset} MHz!{NC}")
+            nv.nvmlDeviceSetGpcClkVfOffset(self.gpu, core_offset)
+            nv.nvmlDeviceSetMemClkVfOffset(
+                self.gpu, mem_offset * 2
+            )  # Convert to NVML units
+            print(
+                f"{self.ansi_green}Set core clock offset to {core_offset} MHz and "
+                f"memory clock offset to {mem_offset} MHz!{self.nc}"
+            )
         except nv.NVMLError as e:
-            print(f"{ANSI_WARN}Some kind of NVML error prevented applying the requested change: {e}{NC}")
-        print()
-    if args.set_power_limit:
-        print(f"Attempting to set power limit to {args.set_power_limit} W...")
+            print(
+                f"{self.ansi_warn}Some kind of NVML error prevented applying the requested change: {e}{self.nc}"
+            )
+
+    def _offline_set_power_limit(self) -> None:
+        print(f"Attempting to set power limit to {self.args.set_power_limit} W...")
         try:
-            nv.nvmlDeviceSetPowerManagementLimit(gpu, args.set_power_limit * 1000)
-            print(f"{ANSI_GREEN}Power limit set to {args.set_power_limit} W!{NC}")
+            nv.nvmlDeviceSetPowerManagementLimit(
+                self.gpu, self.args.set_power_limit * 1000
+            )
+            print(
+                f"{self.ansi_green}Power limit set to {self.args.set_power_limit} W!{self.nc}"
+            )
         except nv.NVMLError as e:
-            print(f"{ANSI_WARN}Some kind of NVML error prevented applying the requested change: {e}{NC}")
-        print()
-    if args.set_profile:
-        profile_number = args.set_profile
-        print(f"Loading profile {profile_number} for GPU {args.gpu_number}!")
+            print(
+                f"{self.ansi_warn}Some kind of NVML error prevented applying the requested change: {e}{self.nc}"
+            )
+
+    def _offline_load_profile(self, profile_number: int) -> None:
+        print(f"Loading profile {profile_number} for GPU {self.args.gpu_number}!")
+        profile_path = os.path.join(
+            self.profile_dir, f"profile{profile_number}_{self.args.gpu_number}.bnt"
+        )
         try:
-            with open(os.path.join(profile_dir, f"profile{profile_number}_{args.gpu_number}.bnt"), "r", encoding="utf-8") as file:
-                new_core_offset = int(file.readline())
-                new_mem_offset = int(file.readline())
-                new_power_limit = int(file.readline())
-                new_fan_policy = int(file.readline())
-                new_fan_speed = int(file.readline())
-                print(f"Setting core clock offset to {add_sign(new_core_offset)} Mhz...")
-                nv.nvmlDeviceSetGpcClkVfOffset(gpu, new_core_offset)
-                print(f"Setting mem clock offset to {add_sign(new_mem_offset)} Mhz...")
-                nv.nvmlDeviceSetMemClkVfOffset(gpu, new_mem_offset * 2)
-                print(f"Setting core power limit to {new_power_limit}...")
-                nv.nvmlDeviceSetPowerManagementLimit(gpu, new_power_limit * 1000)
-                if new_fan_policy == 1:
-                    if 101 > new_fan_speed > 29:
-                        print(f"Setting fan policy to manual and fan speed to {new_fan_speed}%...")
-                        num_fans = nv.nvmlDeviceGetNumFans(gpu)
-                        for i in range(0, num_fans):
-                            nv.nvmlDeviceSetFanControlPolicy(gpu, i, nv.NVML_FAN_POLICY_MANUAL)
-                            nv.nvmlDeviceSetFanSpeed_v2(gpu, i, new_fan_speed)
-                    else:
-                        raise ValueError("Invalid fan speed setting in profile!")
+            with open(profile_path, "r", encoding="utf-8") as f:
+                new_core_offset = int(f.readline())
+                new_mem_offset = int(f.readline())
+                new_power_limit = int(f.readline())
+                new_fan_policy = int(f.readline())
+                new_fan_speed = int(f.readline())
+
+            print(f"Setting core clock offset to {add_sign(new_core_offset)} Mhz...")
+            nv.nvmlDeviceSetGpcClkVfOffset(self.gpu, new_core_offset)
+            print(f"Setting mem clock offset to {add_sign(new_mem_offset)} Mhz...")
+            nv.nvmlDeviceSetMemClkVfOffset(self.gpu, new_mem_offset * 2)
+            print(f"Setting core power limit to {new_power_limit}...")
+            nv.nvmlDeviceSetPowerManagementLimit(self.gpu, new_power_limit * 1000)
+
+            if new_fan_policy == 1:
+                if 101 > new_fan_speed > 29:
+                    print(
+                        f"Setting fan policy to manual and fan speed to {new_fan_speed}%..."
+                    )
+                    num_fans = nv.nvmlDeviceGetNumFans(self.gpu)
+                    for i in range(num_fans):
+                        nv.nvmlDeviceSetFanControlPolicy(
+                            self.gpu, i, nv.NVML_FAN_POLICY_MANUAL
+                        )
+                        nv.nvmlDeviceSetFanSpeed_v2(self.gpu, i, new_fan_speed)
                 else:
-                    print("Setting fan policy to automatic control...")
-                    num_fans = nv.nvmlDeviceGetNumFans(gpu)
-                    for i in range(0, num_fans):
-                        nv.nvmlDeviceSetFanControlPolicy(gpu, i, nv.NVML_FAN_POLICY_TEMPERATURE_CONTINOUS_SW)
-                        nv.nvmlDeviceSetDefaultFanSpeed_v2(gpu, i)
-            print(f"{ANSI_GREEN}Profile {profile_number} successfully applied!{NC}")
+                    raise ValueError("Invalid fan speed setting in profile!")
+            else:
+                print("Setting fan policy to automatic control...")
+                num_fans = nv.nvmlDeviceGetNumFans(self.gpu)
+                for i in range(num_fans):
+                    nv.nvmlDeviceSetFanControlPolicy(
+                        self.gpu, i, nv.NVML_FAN_POLICY_TEMPERATURE_CONTINOUS_SW
+                    )
+                    nv.nvmlDeviceSetDefaultFanSpeed_v2(self.gpu, i)
+
+            print(
+                f"{self.ansi_green}Profile {profile_number} successfully applied!{self.nc}"
+            )
         except ValueError as e:
-            print(f"{ANSI_WARN}Some kind of value error prevented the profile loading: {e}{NC}")
+            print(
+                f"{self.ansi_warn}Some kind of value error prevented the profile loading: {e}{self.nc}"
+            )
         except nv.NVMLError as e:
-            print(f"{ANSI_WARN}Some kind of NVML error prevented the profile loading: {e}{NC}")
+            print(
+                f"{self.ansi_warn}Some kind of NVML error prevented the profile loading: {e}{self.nc}"
+            )
         except FileNotFoundError:
-            print(f"{ANSI_WARN}Profile was not found!{NC}")
-else:
-    #  Interactive mode
-    import ctypes
-    import curses
-    import psutil
-    curses.wrapper(draw_dashboard)
-nv.nvmlShutdown()
+            print(f"{self.ansi_warn}Profile was not found!{self.nc}")
+
+    # ----------------------------------------------------------------------
+    # Interactive (curses) mode
+    # ----------------------------------------------------------------------
+    def run_interactive(self) -> None:
+        """Start the interactive terminal UI."""
+        import curses
+
+        self.curses = curses
+        curses.wrapper(self._dashboard)
+
+
+    def _dashboard(self, stdscr) -> None:
+        """Main curses dashboard loop."""
+        import ctypes
+
+        import psutil
+
+        self.psutil = psutil
+        self.ctypes = ctypes
+
+        self._init_colors(stdscr)
+        stdscr.clear()
+        self.curses.curs_set(0)
+        self.curses.echo()
+        stdscr.nodelay(True)
+
+        # Enable persistence for interactive mode
+        if self.args.interactive:
+            try:
+                nv.nvmlDeviceSetPersistenceMode(self.gpu, 1)
+            except nv.NVMLError as e:
+                stdscr.addstr(
+                    1,
+                    2,
+                    f"Unable to set driver to persistent for interactive mode: {e}",
+                )
+                for i in range(4, 0, -1):
+                    stdscr.addstr(2, 2, f"Shutting down in {i}s...")
+                    stdscr.refresh()
+                    time.sleep(1)
+                return
+
+        self._refresh_profile_exists()
+        self.last_active_profile = [0] * self.num_gpus
+        self.active_profile = 0
+        self.fan_policy = ctypes.c_uint()
+
+        while True:
+            stdscr.clear()
+
+            # Read current sensor / clock values
+
+            nv.nvmlDeviceGetFanControlPolicy_v2(
+                self.gpu, 0, ctypes.byref(self.fan_policy)
+            )
+            fan_policy_str = "Manual" if self.fan_policy.value == 1 else "Auto"
+            fan_speed = nv.nvmlDeviceGetFanSpeed(self.gpu)
+            current_temperature = nv.nvmlDeviceGetTemperature(self.gpu, 0)
+            current_power_usage = nv.nvmlDeviceGetPowerUsage(self.gpu) / 1000  # mW -> W
+            utilization = nv.nvmlDeviceGetUtilizationRates(self.gpu)
+            mem_info = nv.nvmlDeviceGetMemoryInfo(self.gpu)
+            vram_str = f"{mem_info.used / (1024**2):.2f} / {mem_info.total / (1024**2):.2f} MB"
+            temp_str = f"{current_temperature}°C | {fan_speed}% ({fan_policy_str})"
+
+            current_core_offset = nv.nvmlDeviceGetGpcClkVfOffset(self.gpu)
+            # Fix signed overflow from NVML
+            if current_core_offset > 100000:
+                current_core_offset -= 4294966
+            core_offset_sign = add_sign(current_core_offset)
+            core_clock = nv.nvmlDeviceGetClockInfo(self.gpu, nv.NVML_CLOCK_GRAPHICS)
+            max_core_clock = nv.nvmlDeviceGetMaxClockInfo(
+                self.gpu, nv.NVML_CLOCK_GRAPHICS
+            )
+            core_clock_str = (
+                f"{core_clock} Mhz ({core_offset_sign} Mhz)"
+                if current_core_offset != 0
+                else f"{core_clock} Mhz"
+            )
+
+            current_mem_offset = nv.nvmlDeviceGetMemClkVfOffset(self.gpu) / 2
+            if current_mem_offset > 100000:
+                current_mem_offset -= 4294966
+            mem_offset_sign = add_sign(current_mem_offset)
+            mem_clock = nv.nvmlDeviceGetClockInfo(self.gpu, nv.NVML_CLOCK_MEM)
+            max_mem_clock = nv.nvmlDeviceGetMaxClockInfo(self.gpu, nv.NVML_CLOCK_MEM)
+            mem_clock_str = (
+                f"{mem_clock} Mhz ({mem_offset_sign} Mhz)"
+                if current_mem_offset != 0
+                else f"{mem_clock} Mhz"
+            )
+
+
+            current_power_limit = nv.nvmlDeviceGetPowerManagementLimit(self.gpu) / 1000
+            current_power_offset = current_power_limit - self.default_power_limit
+            power_offset_str = add_sign(current_power_offset)
+            power_str = f"{current_power_usage:.2f} / {current_power_limit:.2f} W ({power_offset_str} W)"
+
+            current_power_percentage = (current_power_usage / current_power_limit) * 100
+            current_clock_percentage = (core_clock / max_core_clock) * 100
+            current_mem_clock_percentage = (mem_clock / max_mem_clock) * 100
+            current_vram_percentage = (mem_info.used / mem_info.total) * 100
+
+
+            gpu_text_width = len(f"{self.args.gpu_number} - {self.gpu_name}") + 24
+            core_text_width = len(core_clock_str) + 24
+            mem_text_width = len(mem_clock_str) + 24
+            power_text_width = len(power_str) + 24
+            vram_text_width = len(vram_str) + 24
+            self.max_text_width = max(gpu_text_width, core_text_width, mem_text_width, power_text_width, vram_text_width)
+            
+            # Reactive colouring
+            temp_color = self.WHITE
+            power_color = self.WHITE
+            clock_color = self.WHITE
+            mem_clock_color = self.WHITE
+            mem_util_color = self.WHITE
+            util_color = self.WHITE
+            vram_color = self.WHITE
+
+            if self.args.reactive_color:
+                temp_color = self._set_color(current_temperature, 65, 80)
+                power_color = self._set_color(current_power_percentage, 70, 90)
+                clock_color = self._set_color(current_clock_percentage, 70, 90)
+                mem_clock_color = self._set_color(current_mem_clock_percentage, 70, 90)
+                util_color = self._set_color(utilization.gpu, 70, 90)
+                mem_util_color = self._set_color(utilization.memory, 70, 90)
+                vram_color = self._set_color(current_vram_percentage, 70, 90)
+
+            # Draw UI
+            self._draw_header(stdscr)
+            if self.args.interactive:
+                self._draw_profile_indicators(stdscr)
+
+            self.safe_addstr(stdscr, 3, 2, "GPU: ", self.YELLOW)
+            self.safe_addstr(stdscr, 4, 2, "Core Clock Freq: ", self.YELLOW)
+            self.safe_addstr(stdscr, 5, 2, "Mem Clock Freq: ", self.YELLOW)
+            self.safe_addstr(stdscr, 6, 2, "Temp/Fan: ", self.YELLOW)
+            self.safe_addstr(stdscr, 7, 2, "Power: ", self.YELLOW)
+            self.safe_addstr(stdscr, 8, 2, "VRAM Usage: ", self.YELLOW)
+            self.safe_addstr(stdscr, 9, 2, "GPU Core Usage: ", self.YELLOW)
+            self.safe_addstr(stdscr, 10, 2, "Mem Controller: ", self.YELLOW)
+
+            self.safe_addstr(
+                stdscr, 3, 22, f"{self.args.gpu_number} - {self.gpu_name}", self.GREEN
+            )
+            self.safe_addstr(stdscr, 4, 22, core_clock_str, clock_color)
+            self.safe_addstr(stdscr, 5, 22, mem_clock_str, mem_clock_color)
+            self.safe_addstr(
+                stdscr,
+                6,
+                22,
+                temp_str,
+                temp_color,
+            )
+            self.safe_addstr(
+                stdscr,
+                7,
+                22,
+                power_str,
+                power_color,
+            )
+            self.safe_addstr(
+                stdscr,
+                8,
+                22,
+                vram_str,
+                vram_color,
+            )
+            self.safe_addstr(stdscr, 9, 22, f"{utilization.gpu}%", util_color)
+            self.safe_addstr(stdscr, 10, 22, f"{utilization.memory}%", mem_util_color)
+
+            self.safe_addstr(stdscr, 12, 2, 'Press "h" for help or "q" to quit!')
+
+            stdscr.refresh()
+            stdscr.timeout(self.args.refresh_rate)
+            key = stdscr.getch()
+
+            if key == ord("q"):
+                return
+            elif key == ord("h"):
+                self._show_help(stdscr)
+            elif key == ord("i"):
+                self._process_monitor(stdscr)
+            elif self.args.interactive and key in (
+                self.curses.KEY_F1,
+                self.curses.KEY_F2,
+                self.curses.KEY_F3,
+                self.curses.KEY_F4,
+                self.curses.KEY_RIGHT,
+                self.curses.KEY_LEFT,
+                ord("1"),
+                ord("2"),
+                ord("3"),
+                ord("4"),
+                ord("!"),
+                ord("@"),
+                ord("#"),
+                ord("$"),
+                ord("c"),
+                ord("m"),
+                ord("p"),
+                ord("f"),
+                ord("a"),
+            ):
+                current_profile = self.active_profile
+                self.active_profile = 0
+                stdscr.nodelay(False)
+                delay = 0
+
+                if key == self.curses.KEY_RIGHT and self.num_gpus > 1:
+                    delay = self._switch_gpu(stdscr, 1)
+                elif key == self.curses.KEY_LEFT and self.num_gpus > 1:
+                    delay = self._switch_gpu(stdscr, -1)
+                elif key == ord("1"):
+                    self._save_profile(
+                        stdscr,
+                        1,
+                        current_core_offset,
+                        current_mem_offset,
+                        current_power_limit,
+                        self.fan_policy.value,
+                        fan_speed,
+                    )
+                    self.active_profile = 1
+                    delay = 1
+                elif key == self.curses.KEY_F1:
+                    self.active_profile = self._load_profile(stdscr, 1)
+                    delay = 2
+                elif key == ord("!"):
+                    self._delete_profile(stdscr, 1)
+                    self.active_profile = current_profile if current_profile != 1 else 0
+                    delay = 1
+                elif key == ord("2"):
+                    self._save_profile(
+                        stdscr,
+                        2,
+                        current_core_offset,
+                        current_mem_offset,
+                        current_power_limit,
+                        self.fan_policy.value,
+                        fan_speed,
+                    )
+                    self.active_profile = 2
+                    delay = 1
+                elif key == self.curses.KEY_F2:
+                    self.active_profile = self._load_profile(stdscr, 2)
+                    delay = 2
+                elif key == ord("@"):
+                    self._delete_profile(stdscr, 2)
+                    self.active_profile = current_profile if current_profile != 2 else 0
+                    delay = 1
+                elif key == ord("3"):
+                    self._save_profile(
+                        stdscr,
+                        3,
+                        current_core_offset,
+                        current_mem_offset,
+                        current_power_limit,
+                        self.fan_policy.value,
+                        fan_speed,
+                    )
+                    self.active_profile = 3
+                    delay = 1
+                elif key == self.curses.KEY_F3:
+                    self.active_profile = self._load_profile(stdscr, 3)
+                    delay = 2
+                elif key == ord("#"):
+                    self._delete_profile(stdscr, 3)
+                    self.active_profile = current_profile if current_profile != 3 else 0
+                    delay = 1
+                elif key == ord("4"):
+                    self._save_profile(
+                        stdscr,
+                        4,
+                        current_core_offset,
+                        current_mem_offset,
+                        current_power_limit,
+                        self.fan_policy.value,
+                        fan_speed,
+                    )
+                    self.active_profile = 4
+                    delay = 1
+                elif key == self.curses.KEY_F4:
+                    self.active_profile = self._load_profile(stdscr, 4)
+                    delay = 2
+                elif key == ord("$"):
+                    self._delete_profile(stdscr, 4)
+                    self.active_profile = current_profile if current_profile != 4 else 0
+                    delay = 1
+                elif key == ord("c"):
+                    delay = self._set_core_offset(stdscr)
+                elif key == ord("m"):
+                    delay = self._set_mem_offset(stdscr)
+                elif key == ord("p"):
+                    delay = self._set_power_limit(stdscr)
+                elif key == ord("f"):
+                    delay = self._set_fan_speed(stdscr)
+                elif key == ord("a"):
+                    delay = self._set_auto_fan(stdscr)
+
+                stdscr.refresh()
+                time.sleep(1 + delay)
+                stdscr.nodelay(True)
+                # Clear any queued input
+                while stdscr.getch() != -1:
+                    pass
+
+    # ------------------------------------------------------------------
+    # Curses helper methods
+    # ------------------------------------------------------------------
+    def _init_colors(self, stdscr) -> None:
+        """Initialise colour pairs and set the colour attributes used by the UI."""
+        self.GREEN = self.RED = self.CYAN = self.YELLOW = self.MAGENTA = self.BLUE = (
+            self.WHITE
+        ) = self.GRAY = self.curses.A_NORMAL
+
+        if self.curses.has_colors():
+            self.curses.use_default_colors()
+            if self.use_color:
+                self.curses.start_color()
+                self.curses.init_pair(1, self.curses.COLOR_GREEN, -1)
+                self.GREEN = self.curses.color_pair(1)
+                self.curses.init_pair(2, self.curses.COLOR_RED, -1)
+                self.RED = self.curses.color_pair(2)
+                self.curses.init_pair(3, self.curses.COLOR_CYAN, -1)
+                self.CYAN = self.curses.color_pair(3)
+                self.curses.init_pair(4, self.curses.COLOR_YELLOW, -1)
+                self.YELLOW = self.curses.color_pair(4)
+                self.curses.init_pair(5, self.curses.COLOR_MAGENTA, -1)
+                self.MAGENTA = self.curses.color_pair(5)
+                self.curses.init_pair(6, self.curses.COLOR_BLUE, -1)
+                self.BLUE = self.curses.color_pair(6)
+                self.curses.init_pair(7, self.curses.COLOR_WHITE, -1)
+                self.WHITE = self.curses.color_pair(7)
+                try:
+                    self.curses.init_pair(8, 8, -1)
+                    self.GRAY = self.curses.color_pair(8)
+                except ValueError:
+                    self.GRAY = self.CYAN
+            else:
+                self.GRAY = self.CYAN = self.RED = self.GREEN = self.WHITE = (
+                    self.curses.A_NORMAL
+                )
+                self.YELLOW = self.BLUE = self.MAGENTA = self.curses.A_BOLD
+        else:
+            self.GRAY = self.CYAN = self.RED = self.GREEN = self.WHITE = (
+                self.curses.A_NORMAL
+            )
+            self.YELLOW = self.BLUE = self.MAGENTA = self.curses.A_BOLD
+
+    def safe_addstr(
+        self, stdscr, y: int, x: int, text: str, attr=0, wrap: bool = False
+    ) -> int:
+        """
+        Add a string to the screen without raising curses.error.
+
+        If wrap is False, the string is truncated with an ellipsis if it would
+        exceed the screen width. If wrap is True, the text is wrapped to
+        multiple lines. Returns the number of lines used.
+        """
+        max_y, max_x = stdscr.getmaxyx()
+        if max_x > self.max_text_width:  # If the terminal window is greater than max app width
+            self.mid_ref = (max_x // 2) - (self.max_text_width // 2)
+            x += self.mid_ref
+
+        if y < 0 or y >= max_y or x < 0 or x >= max_x:
+            return 0
+
+        if wrap:
+            available_width = self.max_text_width  # Wrap text and whatever our max length point already is.
+            if available_width <= 0:
+                return 0
+            lines = textwrap.wrap(text, width=available_width) or [""]
+            used = 0
+            for line in lines:
+                if y + used >= max_y:
+                    break
+                try:
+                    stdscr.addstr(y + used, x, line, attr)
+                except self.curses.error:
+                    pass
+                used += 1
+            return used
+        else:
+            available_width = max_x - x
+            if len(text) > available_width:
+                if available_width <= 3:
+                    text = text[:available_width]
+                else:
+                    text = text[: available_width - 3] + "..."
+            try:
+                stdscr.addstr(y, x, text, attr)
+            except self.curses.error:
+                pass
+            return 1
+
+    def _draw_header(self, stdscr) -> None:
+        self.safe_addstr(
+            stdscr, 0, (self.max_text_width // 2) - 3, "Envious", self.MAGENTA
+        )
+        self.safe_addstr(stdscr, 1, 0, "-" * self.max_text_width)
+
+    def _draw_profile_indicators(self, stdscr) -> None:
+        for i in range(1, 5):
+            if self.use_color:
+                if self.active_profile == i:
+                    color = self.YELLOW
+                elif self.profile_exists[i]:
+                    color = self.BLUE
+                else:
+                    color = self.GRAY
+            else:
+                if self.active_profile == i:
+                    color = self.curses.A_BOLD
+                elif self.profile_exists[i]:
+                    color = self.curses.A_NORMAL
+                else:
+                    color = None
+            if color is not None:
+                self.safe_addstr(stdscr, 2, ((self.max_text_width // 2) - 6) + (4 * (i - 1)), str(i), color)
+
+    def _set_color(self, value, caution: int, warn: int):
+        """Return a colour attribute based on threshold values."""
+        if caution < value < warn:
+            return self.YELLOW
+        elif value > warn:
+            return self.RED
+        else:
+            return self.GREEN
+
+    # ------------------------------------------------------------------
+    # Interactive actions
+    # ------------------------------------------------------------------
+    def _refresh_profile_exists(self) -> None:
+        self.profile_exists = [False] * 5
+        for i in range(1, 5):
+            path = os.path.join(
+                self.profile_dir, f"profile{i}_{self.args.gpu_number}.bnt"
+            )
+            if os.path.exists(path):
+                self.profile_exists[i] = True
+
+    def _save_profile(
+        self,
+        stdscr,
+        profile_number: int,
+        current_core_offset,
+        current_mem_offset,
+        current_power_limit,
+        fan_policy_value,
+        fan_speed,
+    ) -> None:
+        self.safe_addstr(
+            stdscr,
+            self.input_start,
+            0,
+            f"Current settings will be saved as profile {profile_number} for GPU {self.args.gpu_number}!",
+        )
+        path = os.path.join(
+            self.profile_dir, f"profile{profile_number}_{self.args.gpu_number}.bnt"
+        )
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(f"{int(current_core_offset)}\n")
+            f.write(f"{int(current_mem_offset)}\n")
+            f.write(f"{int(current_power_limit)}\n")
+            f.write(f"{fan_policy_value}\n")
+            f.write(f"{fan_speed}\n")
+        self.profile_exists[profile_number] = True
+
+    def _load_profile(self, stdscr, profile_number: int) -> int:
+        """Load a profile; returns the profile number on success, 66 on failure."""
+        self.safe_addstr(
+            stdscr,
+            self.input_start,
+            0,
+            f"Loading profile {profile_number} for GPU {self.args.gpu_number}!",
+        )
+        path = os.path.join(
+            self.profile_dir, f"profile{profile_number}_{self.args.gpu_number}.bnt"
+        )
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                new_core_offset = int(f.readline())
+                new_mem_offset = int(f.readline())
+                new_power_limit = int(f.readline())
+                new_fan_policy = int(f.readline())
+                new_fan_speed = int(f.readline())
+
+            self.safe_addstr(
+                stdscr,
+                self.input_start + 1,
+                0,
+                f"Setting core clock offset to {add_sign(new_core_offset)} Mhz...",
+            )
+            nv.nvmlDeviceSetGpcClkVfOffset(self.gpu, new_core_offset)
+            self.safe_addstr(
+                stdscr,
+                self.input_start + 2,
+                0,
+                f"Setting mem clock offset to {add_sign(new_mem_offset)} Mhz...",
+            )
+            nv.nvmlDeviceSetMemClkVfOffset(self.gpu, new_mem_offset * 2)
+            self.safe_addstr(
+                stdscr,
+                self.input_start + 3,
+                0,
+                f"Setting core power limit to {new_power_limit}...",
+            )
+            nv.nvmlDeviceSetPowerManagementLimit(self.gpu, new_power_limit * 1000)
+
+            if new_fan_policy == 1:
+                if 101 > new_fan_speed > 29:
+                    self.safe_addstr(
+                        stdscr,
+                        self.input_start + 4,
+                        0,
+                        f"Setting fan policy to manual and fan speed to {new_fan_speed}%...",
+                    )
+                    num_fans = nv.nvmlDeviceGetNumFans(self.gpu)
+                    for i in range(num_fans):
+                        nv.nvmlDeviceSetFanControlPolicy(
+                            self.gpu, i, nv.NVML_FAN_POLICY_MANUAL
+                        )
+                        nv.nvmlDeviceSetFanSpeed_v2(self.gpu, i, new_fan_speed)
+                else:
+                    raise ValueError("Invalid fan speed setting in profile!")
+            else:
+                self.safe_addstr(
+                    stdscr,
+                    self.input_start + 4,
+                    0,
+                    "Setting fan policy to automatic control...",
+                )
+                num_fans = nv.nvmlDeviceGetNumFans(self.gpu)
+                for i in range(num_fans):
+                    nv.nvmlDeviceSetFanControlPolicy(
+                        self.gpu, i, nv.NVML_FAN_POLICY_TEMPERATURE_CONTINOUS_SW
+                    )
+                    nv.nvmlDeviceSetDefaultFanSpeed_v2(self.gpu, i)
+
+            return profile_number
+        except ValueError as e:
+            self.safe_addstr(
+                stdscr,
+                self.input_start + 1,
+                0,
+                f"Some kind of value error prevented the profile loading: {e}",
+            )
+            return 66
+        except nv.NVMLError as e:
+            self.safe_addstr(
+                stdscr,
+                self.input_start + 1,
+                0,
+                f"Some kind of NVML error prevented the profile loading: {e}",
+            )
+            return 66
+        except FileNotFoundError:
+            self.safe_addstr(stdscr, self.input_start + 1, 0, "Profile was not found!")
+            return 66
+
+    def _delete_profile(self, stdscr, profile_number: int) -> None:
+        path = os.path.join(
+            self.profile_dir, f"profile{profile_number}_{self.args.gpu_number}.bnt"
+        )
+        if os.path.exists(path):
+            os.remove(path)
+            self.safe_addstr(
+                stdscr,
+                self.input_start,
+                0,
+                f"Deleted profile {profile_number} for GPU {self.args.gpu_number}!",
+            )
+            self.profile_exists[profile_number] = False
+        else:
+            self.safe_addstr(
+                stdscr,
+                self.input_start,
+                0,
+                f"Nope, profile {profile_number} doesn't exist so we can't delete it, silly!",
+            )
+
+    def _set_core_offset(self, stdscr) -> int:
+        self.safe_addstr(
+            stdscr, self.input_start, 0, "Enter new core clock offset in Mhz:"
+        )
+        new_core_offset = stdscr.getstr(self.input_start, 36 + self.mid_ref, 6)
+        try:
+            new_core_offset = int(new_core_offset)
+            self.safe_addstr(
+                stdscr,
+                self.input_start + 1,
+                0,
+                f"Setting core clock offset to {new_core_offset} MHz...",
+            )
+            nv.nvmlDeviceSetGpcClkVfOffset(self.gpu, new_core_offset)
+            return 0
+        except ValueError:
+            self.safe_addstr(
+                stdscr,
+                self.input_start + 1,
+                0,
+                "Invalid input! Please enter a valid number.",
+            )
+            return 2
+        except nv.NVMLError as e:
+            self.safe_addstr(
+                stdscr, self.input_start + 2, 0, f"Failed to set core clock offset: {e}"
+            )
+            return 2
+
+    def _set_mem_offset(self, stdscr) -> int:
+        self.safe_addstr(
+            stdscr, self.input_start, 0, "Enter new mem clock offset in Mhz:"
+        )
+        new_mem_offset = stdscr.getstr(self.input_start, 35 + self.mid_ref, 6)
+        try:
+            new_mem_offset = int(new_mem_offset)
+            self.safe_addstr(
+                stdscr,
+                self.input_start + 1,
+                0,
+                f"Setting mem clock offset to {new_mem_offset} MHz...",
+            )
+            nv.nvmlDeviceSetMemClkVfOffset(self.gpu, new_mem_offset * 2)
+            return 0
+        except ValueError:
+            self.safe_addstr(
+                stdscr,
+                self.input_start + 1,
+                0,
+                "Invalid input! Please enter a valid number.",
+            )
+            return 2
+        except nv.NVMLError as e:
+            self.safe_addstr(
+                stdscr, self.input_start + 2, 0, f"Failed to set mem clock offset: {e}"
+            )
+            return 2
+
+    def _set_power_limit(self, stdscr) -> int:
+        self.safe_addstr(stdscr, self.input_start, 0, "Enter new power limit in watts:")
+        new_power_limit = stdscr.getstr(self.input_start, 32 + self.mid_ref, 6)
+        try:
+            new_power_limit = int(new_power_limit)
+            self.safe_addstr(
+                stdscr,
+                self.input_start + 1,
+                0,
+                f"Setting power limit to {new_power_limit} W...",
+            )
+            nv.nvmlDeviceSetPowerManagementLimit(self.gpu, new_power_limit * 1000)
+            return 0
+        except ValueError:
+            self.safe_addstr(
+                stdscr,
+                self.input_start + 1,
+                0,
+                "Invalid input! Please enter a valid number.",
+            )
+            return 2
+        except nv.NVMLError as e:
+            self.safe_addstr(
+                stdscr, self.input_start + 2, 0, f"Failed to set power limit: {e}"
+            )
+            return 2
+
+    def _set_fan_speed(self, stdscr) -> int:
+        self.safe_addstr(
+            stdscr, self.input_start, 0, "Enter new fan percentage between 30 and 100:"
+        )
+        new_fan_speed = stdscr.getstr(self.input_start, 45 + self.mid_ref, 6)
+        try:
+            new_fan_speed = int(new_fan_speed)
+            self.safe_addstr(
+                stdscr,
+                self.input_start + 1,
+                0,
+                f"Setting fan speed to {new_fan_speed}%...",
+            )
+            if 101 > new_fan_speed > 29:
+                num_fans = nv.nvmlDeviceGetNumFans(self.gpu)
+                for i in range(num_fans):
+                    nv.nvmlDeviceSetFanControlPolicy(
+                        self.gpu, i, nv.NVML_FAN_POLICY_MANUAL
+                    )
+                    nv.nvmlDeviceSetFanSpeed_v2(self.gpu, i, new_fan_speed)
+                if not self.fan_warning_done:
+                    self.safe_addstr(
+                        stdscr,
+                        self.input_start + 2,
+                        0,
+                        'Fan control policy is now MANUAL - this means it will not automatically change with temperature. You can return it to AUTO with "a"',
+                        self.YELLOW,
+                        wrap=True,
+                    )
+                    self.fan_warning_done = True
+                    return 5  # Longer delay to allow warning to be read
+                return 0
+            else:
+                raise ValueError("Between 30 and 100!")
+        except ValueError:
+            self.safe_addstr(
+                stdscr,
+                self.input_start + 1,
+                0,
+                "Invalid input! Please enter a valid number.",
+            )
+            return 2
+        except nv.NVMLError as e:
+            self.safe_addstr(
+                stdscr, self.input_start + 1, 0, f"Failed to set fan speed: {e}"
+            )
+            return 2
+
+    def _set_auto_fan(self, stdscr) -> int:
+        try:
+            self.safe_addstr(
+                stdscr, self.input_start, 0, "Setting fans to automatic control..."
+            )
+            num_fans = nv.nvmlDeviceGetNumFans(self.gpu)
+            for i in range(num_fans):
+                nv.nvmlDeviceSetFanControlPolicy(
+                    self.gpu, i, nv.NVML_FAN_POLICY_TEMPERATURE_CONTINOUS_SW
+                )
+                nv.nvmlDeviceSetDefaultFanSpeed_v2(self.gpu, i)
+            return 0
+        except nv.NVMLError as e:
+            self.safe_addstr(
+                stdscr, self.input_start + 1, 0, f"Failed to set fan speed: {e}"
+            )
+            return 2
+
+    def _switch_gpu(self, stdscr, direction: int) -> int:
+        """direction: 1 = right, -1 = left."""
+        try:
+            self.last_active_profile[self.args.gpu_number] = self.active_profile
+            if direction == 1:
+                self.args.gpu_number = (self.args.gpu_number + 1) % self.num_gpus
+            else:
+                self.args.gpu_number = (self.args.gpu_number - 1) % self.num_gpus
+
+            self.gpu = nv.nvmlDeviceGetHandleByIndex(self.args.gpu_number)
+            self.gpu_name = nv.nvmlDeviceGetName(self.gpu)
+            self.default_power_limit = (
+                nv.nvmlDeviceGetPowerManagementDefaultLimit(self.gpu) / 1000
+            )
+            self._refresh_profile_exists()
+            self.active_profile = self.last_active_profile[self.args.gpu_number]
+            return 0
+        except nv.NVMLError as e:
+            self.safe_addstr(
+                stdscr,
+                self.input_start,
+                0,
+                f"An NVMLError prevented the operation: {e}",
+            )
+            return 2
+
+    # ------------------------------------------------------------------
+    # Help and process monitor screens
+    # ------------------------------------------------------------------
+    def _show_help(self, stdscr) -> None:
+        """Display the help screen and wait for a key press."""
+        stdscr.nodelay(False)
+        stdscr.clear()
+        self._draw_header(stdscr)
+
+        row = 3
+        self.safe_addstr(stdscr, row, 0, "Blissful Legend:", self.BLUE)
+        row += 2
+
+        self.safe_addstr(stdscr, row, 2, "h", self.YELLOW)
+        self.safe_addstr(stdscr, row, 6, "- show this help screen.")
+        row += 1
+
+        self.safe_addstr(stdscr, row, 2, "i", self.YELLOW)
+        self.safe_addstr(stdscr, row, 6, "- switch to process monitor with extra info")
+        row += 1
+
+        if self.args.interactive:
+            self.safe_addstr(stdscr, row, 2, "c", self.YELLOW)
+            self.safe_addstr(stdscr, row, 6, "- set new core clock offset")
+            row += 1
+
+            self.safe_addstr(stdscr, row, 2, "m", self.YELLOW)
+            self.safe_addstr(stdscr, row, 6, "- set new mem clock offset")
+            row += 1
+
+            self.safe_addstr(stdscr, row, 2, "p", self.YELLOW)
+            self.safe_addstr(stdscr, row, 6, "- set new power limit")
+            row += 1
+
+            self.safe_addstr(stdscr, row, 2, "f", self.YELLOW)
+            self.safe_addstr(
+                stdscr, row, 6, "- set fan control to MANUAL and set fan percentage"
+            )
+            row += 1
+
+            self.safe_addstr(stdscr, row, 2, "a", self.YELLOW)
+            self.safe_addstr(
+                stdscr, row, 6, "- set fan control to automatic based on temperatue"
+            )
+            row += 1
+
+            if self.num_gpus > 1:
+                self.safe_addstr(stdscr, row, 2, "<->", self.YELLOW)
+                self.safe_addstr(stdscr, row, 6, "- switch between available GPUs")
+                row += 1
+
+            self.safe_addstr(stdscr, row, 2, "1", self.YELLOW)
+            self.safe_addstr(stdscr, row, 6, "- save profile (also 2, 3, 4)")
+            row += 1
+
+            self.safe_addstr(stdscr, row, 2, "F1", self.YELLOW)
+            self.safe_addstr(stdscr, row, 6, "- load profile (also F2, F3, F4)")
+            row += 1
+
+            self.safe_addstr(stdscr, row, 2, "!", self.YELLOW)
+            self.safe_addstr(stdscr, row, 6, "- delete profile (also @, #, $)")
+            row += 2
+
+        self.safe_addstr(stdscr, row, 0, "Press a key to return to the monitor!")
+        stdscr.refresh()
+        stdscr.getch()
+        stdscr.nodelay(True)
+
+    def _process_monitor(self, stdscr) -> None:
+        """Show extended GPU information and running processes."""
+        key = ""
+
+        # Static info
+        try:
+            nvml_version = nv.nvmlSystemGetNVMLVersion()
+        except nv.NVMLError:
+            nvml_version = "Unknown"
+        try:
+            max_gen = nv.nvmlDeviceGetMaxPcieLinkGeneration(self.gpu)
+            max_width = nv.nvmlDeviceGetMaxPcieLinkWidth(self.gpu)
+        except nv.NVMLError:
+            max_gen = "?"
+            max_width = "?"
+        try:
+            bar_size = nv.nvmlDeviceGetBAR1MemoryInfo(self.gpu)
+            bar_size = f"{(bar_size.bar1Total / 1024) / 1024:.2f} MB"
+        except nv.NVMLError:
+            bar_size = "Unknown"
+        try:
+            compute_major, compute_minor = nv.nvmlDeviceGetCudaComputeCapability(
+                self.gpu
+            )
+        except nv.NVMLError:
+            compute_major = "?"
+            compute_minor = "?"
+        try:
+            cuda_version = nv.nvmlSystemGetCudaDriverVersion_v2()
+            cuda_major = cuda_version // 1000
+            cuda_minor = (cuda_version % 1000) // 10
+        except nv.NVMLError:
+            cuda_major = "?"
+            cuda_minor = "?"
+        try:
+            driver_version = nv.nvmlSystemGetDriverVersion()
+        except nv.NVMLError:
+            driver_version = "Unknown"
+        try:
+            mem_bus_width = nv.nvmlDeviceGetMemoryBusWidth(self.gpu)
+        except nv.NVMLError:
+            mem_bus_width = "Unknown"
+
+        while key != ord("i"):
+            stdscr.clear()
+
+            # Dynamic info
+            try:
+                link_gen = nv.nvmlDeviceGetCurrPcieLinkGeneration(self.gpu)
+                link_width = nv.nvmlDeviceGetCurrPcieLinkWidth(self.gpu)
+            except nv.NVMLError:
+                link_gen = "?"
+                link_width = "?"
+
+            try:
+                compute_procs = nv.nvmlDeviceGetComputeRunningProcesses_v3(self.gpu)
+                for proc in compute_procs:
+                    proc.type = "Compute"
+                graphics_procs = nv.nvmlDeviceGetGraphicsRunningProcesses_v3(self.gpu)
+                for proc in graphics_procs:
+                    proc.type = "Graphics"
+                running_procs = graphics_procs + compute_procs
+                running_procs.sort(key=lambda p: p.usedGpuMemory, reverse=True)
+            except nv.NVMLError:
+                running_procs = "Unknown"
+
+            self._draw_header(stdscr)
+            self.safe_addstr(stdscr, 3, 0, "Extra info/Process Monitor:", self.BLUE)
+
+            self.safe_addstr(stdscr, 5, 2, "Device Name:", self.YELLOW)
+            self.safe_addstr(stdscr, 6, 2, "Driver/NVML Version:", self.YELLOW)
+            self.safe_addstr(stdscr, 7, 2, "Compute:", self.YELLOW)
+            self.safe_addstr(stdscr, 8, 2, "BAR1 Size:", self.YELLOW)
+            self.safe_addstr(stdscr, 9, 2, "PCI Express:", self.YELLOW)
+            self.safe_addstr(stdscr, 10, 2, "Memory bus:", self.YELLOW)
+            self.safe_addstr(stdscr, 11, 2, "Top Processes by VRAM:", self.YELLOW)
+
+            self.safe_addstr(stdscr, 5, 26, self.gpu_name, self.GREEN)
+            self.safe_addstr(stdscr, 6, 26, f"{driver_version} / {nvml_version}")
+            self.safe_addstr(
+                stdscr,
+                7,
+                26,
+                f"CC: {compute_major}.{compute_minor} | CUDA: {cuda_major}.{cuda_minor}",
+            )
+            self.safe_addstr(stdscr, 8, 26, bar_size)
+            self.safe_addstr(
+                stdscr,
+                9,
+                26,
+                f"Gen {link_gen}@{link_width}x / Gen {max_gen}@{max_width}x",
+            )
+            self.safe_addstr(stdscr, 10, 26, f"{mem_bus_width} bit")
+
+            if running_procs != "Unknown":
+                list_length = min(5, len(running_procs))
+                if list_length == 0:
+                    self.safe_addstr(stdscr, 13, 4, "0 -   None")
+                    self.safe_addstr(
+                        stdscr,
+                        15,
+                        0,
+                        'Press "i" key to return to the monitor or "q" to quit!',
+                    )
+                else:
+                    for i in range(list_length):
+                        color = (
+                            self.curses.color_pair(i + 1)
+                            if self.use_color
+                            else self.WHITE
+                        )
+                        self.safe_addstr(stdscr, 13 + i, 4, f"{i + 1}", color)
+                        try:
+                            proc_name = self.psutil.Process(running_procs[i].pid).name()
+                        except (self.psutil.NoSuchProcess, self.psutil.AccessDenied):
+                            proc_name = "?"
+                        self.safe_addstr(
+                            stdscr,
+                            13 + i,
+                            5,
+                            f" -   {proc_name} -- ({(running_procs[i].usedGpuMemory / (1024**2)):.2f} MB) "
+                            f"({running_procs[i].type}) ",
+                        )
+                    self.safe_addstr(
+                        stdscr,
+                        14 + list_length,
+                        0,
+                        'Press "i" key to return to the monitor or "q" to quit!',
+                    )
+            else:
+                self.safe_addstr(stdscr, 13, 4, "Unable to retrieve running processes!")
+                self.safe_addstr(
+                    stdscr,
+                    15,
+                    0,
+                    'Press "i" key to return to the monitor or "q" to quit!',
+                )
+
+            stdscr.timeout(self.args.refresh_rate)
+            stdscr.refresh()
+            key = stdscr.getch()
+            if key == ord("q"):
+                return
+
+
+def main() -> None:
+    """Entry point."""
+    args = parse_args()
+
+    try:
+        nv.nvmlInit()
+    except nv.NVMLError as e:
+        print(f"Could not initialize NVML! The library reported: {e}")
+        sys.exit(8)
+
+    try:
+        gpu = nv.nvmlDeviceGetHandleByIndex(args.gpu_number)
+    except nv.NVMLError as e:
+        print(
+            f"Could not initialize for GPU {args.gpu_number}! The library reported: {e}"
+        )
+        nv.nvmlShutdown()
+        sys.exit(8)
+
+    app = EnviousApp(args, gpu)
+
+    offline_requested = any(
+        [
+            args.set_clocks,
+            args.set_power_limit,
+            args.set_max_fan,
+            args.set_auto_fan,
+            args.set_custom_fan,
+            args.set_profile,
+        ]
+    )
+
+    if offline_requested:
+        app.run_offline()
+    else:
+        app.run_interactive()
+
+    nv.nvmlShutdown()
+
+
+if __name__ == "__main__":
+    main()
