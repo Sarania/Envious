@@ -1,4 +1,4 @@
-.TH ENVIOUS 1 "December 2024" "envious 1.4" "User Commands"
+.TH ENVIOUS 1 "August 2026" "envious 1.6" "User Commands"
 .SH NAME
 envious \- Advanced tool for GPU management from the command line
 .SH SYNOPSIS
@@ -58,7 +58,7 @@ Requires root. Valid values range from 30 to 100. Use with caution!
 
 .TP
 \fB--set-profile \fIID\fR
-Apply one of your previously created custom profiles by its ID.
+Apply one of your previously created custom profiles by its ID number.
 Requires root.
 
 .TP
@@ -70,6 +70,10 @@ Requires root.
 \fB--set-auto-fan\fR
 Reset fan control to the automatic mode.
 Requires root.
+
+.TP
+\fB--accept-risks\fR
+Silence warnings about overclocking etc. and other log noise when running non-interactively.
 
 .SH EXAMPLES
 
@@ -99,7 +103,7 @@ sudo envious --interactive
 .fi
 
 .SH AUTHOR
-Developed by Blyss Sarania.
+Developed by Blyss Sarania - https://github.com/Sarania/Envious
 
 .SH SEE ALSO
 nvidia-smi(1), pynvml documentation, nvidia-ml-py documentation.
