@@ -13,6 +13,6 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 echo "Uninstalling..."
 sudo rm /usr/bin/envious -f
-sudo rm -rf /var/lib/envious -f
+sudo rm /var/lib/envious -rf
 sudo rm /usr/share/man/man1/envious.1.gz -f
 echo "Uninstall completed!"
