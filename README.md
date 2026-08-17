@@ -1,6 +1,6 @@
 <div align="center">
   <h1>Envious</h1>
-  <img src="screenshot.png?version=4" alt="Envious Main View" />
+  <img src="screenshot.png?version=5" alt="Envious Main View" />
 </div>
 
 Envious is a friendly, feature-rich application for administering modern Nvidia GPUs (Maxwell or higher) directly from your Linux command line. It's environment agnostic so it will work in X, Wayland, runlevel 3, etc just the same!
@@ -35,5 +35,5 @@ sudo envious --interactive
 man envious  # For full command list!
 ```
 <div align="center">
-  <img src="pm_screenshot.png?version=1" alt="Envious Process Monitor and Extra Info" />
+  <img src="pm_screenshot.png?version=2" alt="Envious Process Monitor and Extra Info" />
 </div>
