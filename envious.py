@@ -396,7 +396,7 @@ class EnviousApp:
         self.psutil = psutil
         self.ctypes = ctypes
 
-        self._init_colors(stdscr)
+        self._init_colors()
         stdscr.clear()
         self.curses.curs_set(0)
         self.curses.echo()
@@ -691,7 +691,7 @@ class EnviousApp:
     # ------------------------------------------------------------------
     # Curses helper methods
     # ------------------------------------------------------------------
-    def _init_colors(self, stdscr) -> None:
+    def _init_colors(self) -> None:
         """Initialise colour pairs and set the colour attributes used by the UI."""
         self.GREEN = self.RED = self.CYAN = self.YELLOW = self.MAGENTA = self.BLUE = (
             self.WHITE
@@ -816,10 +816,9 @@ class EnviousApp:
         """Return a colour attribute based on threshold values."""
         if caution < value < warn:
             return self.YELLOW
-        elif value > warn:
+        if value > warn:
             return self.RED
-        else:
-            return self.GREEN
+        return self.GREEN
 
     # ------------------------------------------------------------------
     # Interactive actions
@@ -1212,8 +1211,8 @@ class EnviousApp:
 
             self.safe_addstr(stdscr, row, 4, "!", self.YELLOW)
             self.safe_addstr(stdscr, row, 8, "- delete profile (also @, #, $)")
-            row += 2
-
+            row += 1
+        row += 1
         self.safe_addstr(stdscr, row, 2, "Press a key to return to the monitor!")
         stdscr.refresh()
         stdscr.getch()
