@@ -141,7 +141,7 @@ class EnviousApp:
     def __init__(self, args: argparse.Namespace, gpu):
         self.args = args
         self.gpu = gpu
-        self.gpu_name = "bob" # nv.nvmlDeviceGetName(gpu)
+        self.gpu_name = nv.nvmlDeviceGetName(gpu)
         self.num_gpus = nv.nvmlDeviceGetCount()
         self.default_power_limit = (
             nv.nvmlDeviceGetPowerManagementDefaultLimit(gpu) / 1000
@@ -1216,6 +1216,7 @@ class EnviousApp:
 
     def _process_monitor(self, stdscr) -> None:
         """Show extended GPU information and running processes."""
+        self.max_text_width = 62
         key = ""
 
         # Static info
@@ -1281,41 +1282,41 @@ class EnviousApp:
                 running_procs = "Unknown"
 
             self._draw_header(stdscr)
-            self.safe_addstr(stdscr, 3, 0, "Extra info/Process Monitor:", self.BLUE)
+            self.safe_addstr(stdscr, 3, 2, "Extra info/Process Monitor:", self.BLUE)
 
-            self.safe_addstr(stdscr, 5, 2, "Device Name:", self.YELLOW)
-            self.safe_addstr(stdscr, 6, 2, "Driver/NVML Version:", self.YELLOW)
-            self.safe_addstr(stdscr, 7, 2, "Compute:", self.YELLOW)
-            self.safe_addstr(stdscr, 8, 2, "BAR1 Size:", self.YELLOW)
-            self.safe_addstr(stdscr, 9, 2, "PCI Express:", self.YELLOW)
-            self.safe_addstr(stdscr, 10, 2, "Memory bus:", self.YELLOW)
-            self.safe_addstr(stdscr, 11, 2, "Top Processes by VRAM:", self.YELLOW)
+            self.safe_addstr(stdscr, 5, 4, "Device Name:", self.YELLOW)
+            self.safe_addstr(stdscr, 6, 4, "Driver/NVML Version:", self.YELLOW)
+            self.safe_addstr(stdscr, 7, 4, "Compute:", self.YELLOW)
+            self.safe_addstr(stdscr, 8, 4, "BAR1 Size:", self.YELLOW)
+            self.safe_addstr(stdscr, 9, 4, "PCI Express:", self.YELLOW)
+            self.safe_addstr(stdscr, 10, 4, "Memory bus:", self.YELLOW)
+            self.safe_addstr(stdscr, 11, 4, "Top Processes by VRAM:", self.YELLOW)
 
-            self.safe_addstr(stdscr, 5, 26, self.gpu_name, self.GREEN)
-            self.safe_addstr(stdscr, 6, 26, f"{driver_version} / {nvml_version}")
+            self.safe_addstr(stdscr, 5, 28, self.gpu_name, self.GREEN)
+            self.safe_addstr(stdscr, 6, 28, f"{driver_version} / {nvml_version}")
             self.safe_addstr(
                 stdscr,
                 7,
-                26,
+                28,
                 f"CC: {compute_major}.{compute_minor} | CUDA: {cuda_major}.{cuda_minor}",
             )
-            self.safe_addstr(stdscr, 8, 26, bar_size)
+            self.safe_addstr(stdscr, 8, 28, bar_size)
             self.safe_addstr(
                 stdscr,
                 9,
-                26,
+                28,
                 f"Gen {link_gen}@{link_width}x / Gen {max_gen}@{max_width}x",
             )
-            self.safe_addstr(stdscr, 10, 26, f"{mem_bus_width} bit")
+            self.safe_addstr(stdscr, 10, 28, f"{mem_bus_width} bit")
 
             if running_procs != "Unknown":
                 list_length = min(5, len(running_procs))
                 if list_length == 0:
-                    self.safe_addstr(stdscr, 13, 4, "0 -   None")
+                    self.safe_addstr(stdscr, 13, 6, "0 -   None")
                     self.safe_addstr(
                         stdscr,
                         15,
-                        0,
+                        2,
                         'Press "i" key to return to the monitor or "q" to quit!',
                     )
                 else:
@@ -1333,22 +1334,22 @@ class EnviousApp:
                         self.safe_addstr(
                             stdscr,
                             13 + i,
-                            5,
+                            7,
                             f" -   {proc_name} -- ({(running_procs[i].usedGpuMemory / (1024**2)):.2f} MB) "
                             f"({running_procs[i].type}) ",
                         )
                     self.safe_addstr(
                         stdscr,
                         14 + list_length,
-                        0,
+                        2,
                         'Press "i" key to return to the monitor or "q" to quit!',
                     )
             else:
-                self.safe_addstr(stdscr, 13, 4, "Unable to retrieve running processes!")
+                self.safe_addstr(stdscr, 13, 6, "Unable to retrieve running processes!")
                 self.safe_addstr(
                     stdscr,
                     15,
-                    0,
+                    2,
                     'Press "i" key to return to the monitor or "q" to quit!',
                 )
 
