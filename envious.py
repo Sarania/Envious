@@ -128,8 +128,9 @@ def add_sign(offset) -> str:
     """Return a string with a '+' prefix for positive numbers."""
     return f"+{offset}" if offset > 0 else str(offset)
 
+
 def rectify_nvml_overflow(offset_value) -> int:
-    """Rectifies a potential bug/weirdness in the way some versions of NVML return offsets """
+    """Rectifies a potential bug/weirdness in the way some versions of NVML return offsets"""
     if offset_value > 100000:
         offset_value -= 4294966
     return offset_value
@@ -441,7 +442,9 @@ class EnviousApp:
             )
             temp_str = f"{current_temperature}°C | {fan_speed}% ({fan_policy_str})"
 
-            current_core_offset = rectify_nvml_overflow(nv.nvmlDeviceGetGpcClkVfOffset(self.gpu))
+            current_core_offset = rectify_nvml_overflow(
+                nv.nvmlDeviceGetGpcClkVfOffset(self.gpu)
+            )
             core_offset_sign = add_sign(current_core_offset)
             core_clock = nv.nvmlDeviceGetClockInfo(self.gpu, nv.NVML_CLOCK_GRAPHICS)
             max_core_clock = nv.nvmlDeviceGetMaxClockInfo(
@@ -453,7 +456,9 @@ class EnviousApp:
                 else f"{core_clock} Mhz"
             )
 
-            current_mem_offset = rectify_nvml_overflow(nv.nvmlDeviceGetMemClkVfOffset(self.gpu)) / 2
+            current_mem_offset = (
+                rectify_nvml_overflow(nv.nvmlDeviceGetMemClkVfOffset(self.gpu)) / 2
+            )
             mem_offset_sign = add_sign(current_mem_offset)
             mem_clock = nv.nvmlDeviceGetClockInfo(self.gpu, nv.NVML_CLOCK_MEM)
             max_mem_clock = nv.nvmlDeviceGetMaxClockInfo(self.gpu, nv.NVML_CLOCK_MEM)
