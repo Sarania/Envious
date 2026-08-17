@@ -56,64 +56,70 @@ def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="Envious")
     parser.add_argument(
-        "--gpu-number", type=int, default=0, help="Specify the GPU index (default: 0)"
+        "--gpu-number",
+        type=int,
+        default=0,
+        help="(offline)(interactive) Specify the GPU index (default: 0)",
+    )
+    parser.add_argument(
+        "--no-color",
+        action="store_true",
+        help="(offline)(interactive) Disable the use of any color at all",
     )
     parser.add_argument(
         "--refresh-rate",
         type=int,
         default=1000,
-        help="Specify how often to refresh the monitor, in milliseconds. Default is 1000",
+        help="(interactive) Specify how often to refresh the monitor, in milliseconds. (Default: 1000)",
     )
     parser.add_argument(
         "--reactive-color",
         action="store_true",
-        help="Uses color to indicate the intensity of values",
+        help="(interactive) Uses color to indicate the intensity of values",
     )
-    parser.add_argument(
-        "--no-color", action="store_true", help="Disable the use of any color at all"
-    )
+
     parser.add_argument(
         "--interactive",
         action="store_true",
-        help='(root) Enable interactive mode for monitor. Type "h" for help',
+        help='(interactive)(root) Enable interactive mode for monitor so you can change clocks/fan/power/profile. Type "h" for help',
     )
     parser.add_argument(
         "--set-clocks",
         nargs=2,
         type=int,
-        help="(root) Set core and memory clock offsets (in MHz) respectively. "
+        help="(offline)(root) Set core and memory clock offsets (in MHz) respectively. "
         "Example: --set-clocks -150 500",
     )
     parser.add_argument(
         "--set-power-limit",
         type=int,
-        help="(root) Set the power limit (in watts). Example: --set-power-limit 300",
+        help="(offline)(root) Set the power limit (in watts). Example: --set-power-limit 300",
     )
     parser.add_argument(
         "--set-custom-fan",
         type=int,
-        help="(root) Set a custom fan percentage. !BE CAREFUL! as this changes the fan control "
+        help="(offline)(root) Set a custom fan percentage for all fans. !BE CAREFUL! as this changes the fan control "
         "policy to manual!!! Only values 30-100 are accepted.",
     )
     parser.add_argument(
         "--set-profile",
         type=int,
-        help="(root) Apply one of the custom profiles you've created.",
+        help="(offline)(root)(exclusive) Apply one of the custom profiles you've created - valid values are 1 through 4. Blocks other offline switches from processing!",
     )
     parser.add_argument(
         "--set-max-fan",
         action="store_true",
-        help="(root) Set all fans to maximum speed",
+        help="(offline)(root) Set all fans to maximum speed",
     )
     parser.add_argument(
         "--set-auto-fan",
         action="store_true",
-        help="(root) Restore fan control to automatic mode",
+        help="(offline)(root) Restore fan control to automatic mode",
     )
     parser.add_argument(
         "--accept-risks",
         action="store_true",
-        help="Suppress any warning messages normally printed in CLI mode(for making logging less noisy). User accepts ALL risks of overclocking/altering power limits/fan settings! No effect in interactive mode.",
+        help="(offline) Suppress any warning messages normally printed in CLI mode(for making logging less noisy). User accepts ALL risks of overclocking/altering power limits/fan settings! No effect in interactive mode.",
     )
     return parser.parse_args()
 
@@ -122,6 +128,12 @@ def add_sign(offset) -> str:
     """Return a string with a '+' prefix for positive numbers."""
     return f"+{offset}" if offset > 0 else str(offset)
 
+def rectify_nvml_overflow(offset_value) -> int:
+    """Rectifies a potential bug/weirdness in the way some versions of NVML return offsets """
+    if offset_value > 100000:
+        offset_value -= 4294966
+    return offset_value
+
 
 class EnviousApp:
     """Main application class for both offline and interactive modes."""
@@ -129,7 +141,7 @@ class EnviousApp:
     def __init__(self, args: argparse.Namespace, gpu):
         self.args = args
         self.gpu = gpu
-        self.gpu_name = nv.nvmlDeviceGetName(gpu)
+        self.gpu_name = "bob" # nv.nvmlDeviceGetName(gpu)
         self.num_gpus = nv.nvmlDeviceGetCount()
         self.default_power_limit = (
             nv.nvmlDeviceGetPowerManagementDefaultLimit(gpu) / 1000
@@ -195,19 +207,21 @@ class EnviousApp:
             )
         print_space_or_dont()
 
-        if self.args.set_max_fan:
-            self._offline_set_max_fan()
-        elif self.args.set_auto_fan:
-            self._offline_set_auto_fan()
-        elif self.args.set_custom_fan:
-            self._offline_set_custom_fan()
-        print_space_or_dont()
-        if self.args.set_clocks:
-            self._offline_set_clocks()
-        if self.args.set_power_limit:
-            self._offline_set_power_limit()
-        if self.args.set_profile:
+        if self.args.set_profile is not None:
             self._offline_load_profile(self.args.set_profile)
+        else:
+            if self.args.set_max_fan:
+                self._offline_set_max_fan()
+            elif self.args.set_auto_fan:
+                self._offline_set_auto_fan()
+            elif self.args.set_custom_fan is not None:
+                self._offline_set_custom_fan()
+            print_space_or_dont()
+            if self.args.set_clocks is not None:
+                self._offline_set_clocks()
+            if self.args.set_power_limit is not None:
+                self._offline_set_power_limit()
+
         print_space_or_dont()
 
     def _offline_set_max_fan(self) -> None:
@@ -309,6 +323,9 @@ class EnviousApp:
             self.profile_dir, f"profile{profile_number}_{self.args.gpu_number}.bnt"
         )
         try:
+            if not 0 < profile_number < 5:
+                print(f"{self.ansi_warn}Valid profiles are those in the range 1 to 4!")
+                sys.exit(4)
             with open(profile_path, "r", encoding="utf-8") as f:
                 new_core_offset = int(f.readline())
                 new_mem_offset = int(f.readline())
@@ -369,7 +386,6 @@ class EnviousApp:
         self.curses = curses
         curses.wrapper(self._dashboard)
 
-
     def _dashboard(self, stdscr) -> None:
         """Main curses dashboard loop."""
         import ctypes
@@ -420,13 +436,12 @@ class EnviousApp:
             current_power_usage = nv.nvmlDeviceGetPowerUsage(self.gpu) / 1000  # mW -> W
             utilization = nv.nvmlDeviceGetUtilizationRates(self.gpu)
             mem_info = nv.nvmlDeviceGetMemoryInfo(self.gpu)
-            vram_str = f"{mem_info.used / (1024**2):.2f} / {mem_info.total / (1024**2):.2f} MB"
+            vram_str = (
+                f"{mem_info.used / (1024**2):.2f} / {mem_info.total / (1024**2):.2f} MB"
+            )
             temp_str = f"{current_temperature}°C | {fan_speed}% ({fan_policy_str})"
 
-            current_core_offset = nv.nvmlDeviceGetGpcClkVfOffset(self.gpu)
-            # Fix signed overflow from NVML
-            if current_core_offset > 100000:
-                current_core_offset -= 4294966
+            current_core_offset = rectify_nvml_overflow(nv.nvmlDeviceGetGpcClkVfOffset(self.gpu))
             core_offset_sign = add_sign(current_core_offset)
             core_clock = nv.nvmlDeviceGetClockInfo(self.gpu, nv.NVML_CLOCK_GRAPHICS)
             max_core_clock = nv.nvmlDeviceGetMaxClockInfo(
@@ -438,9 +453,7 @@ class EnviousApp:
                 else f"{core_clock} Mhz"
             )
 
-            current_mem_offset = nv.nvmlDeviceGetMemClkVfOffset(self.gpu) / 2
-            if current_mem_offset > 100000:
-                current_mem_offset -= 4294966
+            current_mem_offset = rectify_nvml_overflow(nv.nvmlDeviceGetMemClkVfOffset(self.gpu)) / 2
             mem_offset_sign = add_sign(current_mem_offset)
             mem_clock = nv.nvmlDeviceGetClockInfo(self.gpu, nv.NVML_CLOCK_MEM)
             max_mem_clock = nv.nvmlDeviceGetMaxClockInfo(self.gpu, nv.NVML_CLOCK_MEM)
@@ -449,7 +462,6 @@ class EnviousApp:
                 if current_mem_offset != 0
                 else f"{mem_clock} Mhz"
             )
-
 
             current_power_limit = nv.nvmlDeviceGetPowerManagementLimit(self.gpu) / 1000
             current_power_offset = current_power_limit - self.default_power_limit
@@ -461,22 +473,19 @@ class EnviousApp:
             current_mem_clock_percentage = (mem_clock / max_mem_clock) * 100
             current_vram_percentage = (mem_info.used / mem_info.total) * 100
 
-
+            # 24 is the width of the label text plus spaces for justification
             gpu_text_width = len(f"{self.args.gpu_number} - {self.gpu_name}") + 24
             core_text_width = len(core_clock_str) + 24
             mem_text_width = len(mem_clock_str) + 24
             power_text_width = len(power_str) + 24
             vram_text_width = len(vram_str) + 24
-            self.max_text_width = max(gpu_text_width, core_text_width, mem_text_width, power_text_width, vram_text_width)
-            
-            # Reactive colouring
-            temp_color = self.WHITE
-            power_color = self.WHITE
-            clock_color = self.WHITE
-            mem_clock_color = self.WHITE
-            mem_util_color = self.WHITE
-            util_color = self.WHITE
-            vram_color = self.WHITE
+            self.max_text_width = max(
+                gpu_text_width,
+                core_text_width,
+                mem_text_width,
+                power_text_width,
+                vram_text_width,
+            )
 
             if self.args.reactive_color:
                 temp_color = self._set_color(current_temperature, 65, 80)
@@ -486,6 +495,14 @@ class EnviousApp:
                 util_color = self._set_color(utilization.gpu, 70, 90)
                 mem_util_color = self._set_color(utilization.memory, 70, 90)
                 vram_color = self._set_color(current_vram_percentage, 70, 90)
+            else:
+                temp_color = self.WHITE
+                power_color = self.WHITE
+                clock_color = self.WHITE
+                mem_clock_color = self.WHITE
+                mem_util_color = self.WHITE
+                util_color = self.WHITE
+                vram_color = self.WHITE
 
             # Draw UI
             self._draw_header(stdscr)
@@ -720,7 +737,9 @@ class EnviousApp:
         multiple lines. Returns the number of lines used.
         """
         max_y, max_x = stdscr.getmaxyx()
-        if max_x > self.max_text_width:  # If the terminal window is greater than max app width
+        if (
+            max_x > self.max_text_width
+        ):  # If the terminal window is greater than max app width
             self.mid_ref = (max_x // 2) - (self.max_text_width // 2)
             x += self.mid_ref
 
@@ -728,7 +747,9 @@ class EnviousApp:
             return 0
 
         if wrap:
-            available_width = self.max_text_width  # Wrap text and whatever our max length point already is.
+            available_width = (
+                self.max_text_width
+            )  # Wrap text and whatever our max length point already is.
             if available_width <= 0:
                 return 0
             lines = textwrap.wrap(text, width=available_width) or [""]
@@ -778,7 +799,13 @@ class EnviousApp:
                 else:
                     color = None
             if color is not None:
-                self.safe_addstr(stdscr, 2, ((self.max_text_width // 2) - 6) + (4 * (i - 1)), str(i), color)
+                self.safe_addstr(
+                    stdscr,
+                    2,
+                    ((self.max_text_width // 2) - 6) + (4 * (i - 1)),
+                    str(i),
+                    color,
+                )
 
     def _set_color(self, value, caution: int, warn: int):
         """Return a colour attribute based on threshold values."""
@@ -1125,63 +1152,64 @@ class EnviousApp:
         """Display the help screen and wait for a key press."""
         stdscr.nodelay(False)
         stdscr.clear()
+        self.max_text_width = 60 if self.args.interactive else 54
         self._draw_header(stdscr)
 
         row = 3
-        self.safe_addstr(stdscr, row, 0, "Blissful Legend:", self.BLUE)
+        self.safe_addstr(stdscr, row, 2, "Blissful Legend:", self.BLUE)
         row += 2
 
-        self.safe_addstr(stdscr, row, 2, "h", self.YELLOW)
-        self.safe_addstr(stdscr, row, 6, "- show this help screen.")
+        self.safe_addstr(stdscr, row, 4, "h", self.YELLOW)
+        self.safe_addstr(stdscr, row, 8, "- show this help screen.")
         row += 1
 
-        self.safe_addstr(stdscr, row, 2, "i", self.YELLOW)
-        self.safe_addstr(stdscr, row, 6, "- switch to process monitor with extra info")
+        self.safe_addstr(stdscr, row, 4, "i", self.YELLOW)
+        self.safe_addstr(stdscr, row, 8, "- switch to process monitor with extra info")
         row += 1
 
         if self.args.interactive:
-            self.safe_addstr(stdscr, row, 2, "c", self.YELLOW)
-            self.safe_addstr(stdscr, row, 6, "- set new core clock offset")
+            self.safe_addstr(stdscr, row, 4, "c", self.YELLOW)
+            self.safe_addstr(stdscr, row, 8, "- set new core clock offset")
             row += 1
 
-            self.safe_addstr(stdscr, row, 2, "m", self.YELLOW)
-            self.safe_addstr(stdscr, row, 6, "- set new mem clock offset")
+            self.safe_addstr(stdscr, row, 4, "m", self.YELLOW)
+            self.safe_addstr(stdscr, row, 8, "- set new mem clock offset")
             row += 1
 
-            self.safe_addstr(stdscr, row, 2, "p", self.YELLOW)
-            self.safe_addstr(stdscr, row, 6, "- set new power limit")
+            self.safe_addstr(stdscr, row, 4, "p", self.YELLOW)
+            self.safe_addstr(stdscr, row, 8, "- set new power limit")
             row += 1
 
-            self.safe_addstr(stdscr, row, 2, "f", self.YELLOW)
+            self.safe_addstr(stdscr, row, 4, "f", self.YELLOW)
             self.safe_addstr(
-                stdscr, row, 6, "- set fan control to MANUAL and set fan percentage"
+                stdscr, row, 8, "- set fan control to MANUAL and set fan percentage"
             )
             row += 1
 
-            self.safe_addstr(stdscr, row, 2, "a", self.YELLOW)
+            self.safe_addstr(stdscr, row, 4, "a", self.YELLOW)
             self.safe_addstr(
-                stdscr, row, 6, "- set fan control to automatic based on temperatue"
+                stdscr, row, 8, "- set fan control to automatic based on temperatue"
             )
             row += 1
 
             if self.num_gpus > 1:
-                self.safe_addstr(stdscr, row, 2, "<->", self.YELLOW)
-                self.safe_addstr(stdscr, row, 6, "- switch between available GPUs")
+                self.safe_addstr(stdscr, row, 4, "<->", self.YELLOW)
+                self.safe_addstr(stdscr, row, 8, "- switch between available GPUs")
                 row += 1
 
-            self.safe_addstr(stdscr, row, 2, "1", self.YELLOW)
-            self.safe_addstr(stdscr, row, 6, "- save profile (also 2, 3, 4)")
+            self.safe_addstr(stdscr, row, 4, "1", self.YELLOW)
+            self.safe_addstr(stdscr, row, 8, "- save profile (also 2, 3, 4)")
             row += 1
 
-            self.safe_addstr(stdscr, row, 2, "F1", self.YELLOW)
-            self.safe_addstr(stdscr, row, 6, "- load profile (also F2, F3, F4)")
+            self.safe_addstr(stdscr, row, 4, "F1", self.YELLOW)
+            self.safe_addstr(stdscr, row, 8, "- load profile (also F2, F3, F4)")
             row += 1
 
-            self.safe_addstr(stdscr, row, 2, "!", self.YELLOW)
-            self.safe_addstr(stdscr, row, 6, "- delete profile (also @, #, $)")
+            self.safe_addstr(stdscr, row, 4, "!", self.YELLOW)
+            self.safe_addstr(stdscr, row, 8, "- delete profile (also @, #, $)")
             row += 2
 
-        self.safe_addstr(stdscr, row, 0, "Press a key to return to the monitor!")
+        self.safe_addstr(stdscr, row, 2, "Press a key to return to the monitor!")
         stdscr.refresh()
         stdscr.getch()
         stdscr.nodelay(True)
@@ -1353,14 +1381,14 @@ def main() -> None:
     app = EnviousApp(args, gpu)
 
     offline_requested = any(
-        [
-            args.set_clocks,
-            args.set_power_limit,
+        (
+            args.set_clocks is not None,
+            args.set_power_limit is not None,
             args.set_max_fan,
             args.set_auto_fan,
-            args.set_custom_fan,
-            args.set_profile,
-        ]
+            args.set_custom_fan is not None,
+            args.set_profile is not None,
+        )
     )
 
     if offline_requested:
