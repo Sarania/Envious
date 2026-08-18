@@ -1,0 +1,13 @@
+[project]
+name = "Envious"
+version = "1.6"
+description = "Envious - an Nvidia GPU management suite for the terminal by Blyss Sarania"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "nvidia-ml-py>=11.5",
+    "psutil>=7.0.0"
+]
+
+[tool.ruff]
+line-length = 120

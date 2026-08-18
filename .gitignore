@@ -1,2 +1,3 @@
 *.bnt
 .python-version
+.pylintrc

@@ -5,7 +5,7 @@
 
 Envious is a friendly, feature-rich application for administering modern Nvidia GPUs (Maxwell or higher) directly from your Linux command line. It's environment agnostic so it will work in X, Wayland, runlevel 3, etc just the same!
 
-It requires just Python 3 and the nvidia-ml-py libraries along with reasonably up-to-date Nvidia drivers. Using envious, you can overclock or underclock your GPU, adjust power limits, control fan speeds, and view
+It requires just Python 3, psutil, and the nvidia-ml-py libraries along with reasonably up-to-date Nvidia drivers. Using envious, you can overclock or underclock your GPU, adjust power limits, control fan speeds, and view
 real-time monitoring information through a built-in curses-based interface, with support for multiple GPUs! Profiles can be saved and loaded for convenience, and the tool can operate non-interactively for scripting purposes.
 
 While monitoring can be performed as a normal user, many of the overclocking, power management, and fan control operations will require root privileges. Use this tool responsibly, as you accept all risks
