@@ -15,7 +15,7 @@ License: MIT
 
 
 ## Usage
-Profiles will be stored within the local directory unless envious is installed with the script in which case they are stored in /var/lib/envious. You need nvidia-ml-py > 11.5 installed at the system level or in an active venv.  
+Profiles will be stored within the local directory unless envious is installed with the script in which case they are stored in /var/lib/envious. You need nvidia-ml-py >= 11.5 and psutil >= 7.0 installed at the system level or in an active venv.  
 
 ```
 # From within the Envious directory:
