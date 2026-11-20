@@ -134,6 +134,34 @@ def rectify_nvml_overflow(offset_value) -> int:
     return offset_value
 
 
+def merge_gpu_processes(get_name, graphics_procs, compute_procs) -> list:
+    """
+    Combine the NVML graphics and compute process lists into one list.
+
+    Processes that appear in both lists with an identical name and identical
+    VRAM usage are the same process opening both context types, so they get a
+    single entry with the combined type "Graphics + Compute".
+    """
+    merged = list(graphics_procs)
+    for proc in compute_procs:
+        combined = next(
+            (
+                existing
+                for existing in merged
+                if existing.type != proc.type
+                and existing.usedGpuMemory == proc.usedGpuMemory
+                and get_name(existing.pid) == get_name(proc.pid)
+                and get_name(proc.pid) != "?"
+            ),
+            None,
+        )
+        if combined is not None:
+            combined.type = "Graphics + Compute"
+        else:
+            merged.append(proc)
+    return merged
+
+
 class EnviousApp:
     """Main application class for both offline and interactive modes."""
 
@@ -1054,6 +1082,13 @@ class EnviousApp:
         stdscr.getch()
         stdscr.nodelay(True)
 
+    def _proc_name(self, pid) -> str:
+        """Look up a process name by PID, returning '?' when it cannot be resolved."""
+        try:
+            return self.psutil.Process(pid).name()
+        except (self.psutil.NoSuchProcess, self.psutil.AccessDenied):
+            return "?"
+
     def _process_monitor(self, stdscr) -> None:
         """Show extended GPU information and running processes."""
         self.max_text_width = 62
@@ -1114,10 +1149,35 @@ class EnviousApp:
                 graphics_procs = nv.nvmlDeviceGetGraphicsRunningProcesses_v3(self.gpu)
                 for proc in graphics_procs:
                     proc.type = "Graphics"
-                running_procs = graphics_procs + compute_procs
+                running_procs = merge_gpu_processes(self._proc_name, graphics_procs, compute_procs)
                 running_procs.sort(key=lambda p: p.usedGpuMemory, reverse=True)
             except nv.NVMLError:
                 running_procs = "Unknown"
+
+            # 24 is the width of the label column plus spacing, labels start at x=4, values at x=28
+            name_text_width = len(self.gpu_name) + 24
+            driver_text_width = len(f"{driver_version} / {nvml_version}") + 24
+            compute_text_width = len(f"CC: {compute_major}.{compute_minor} | CUDA: {cuda_major}.{cuda_minor}") + 24
+            bar_text_width = len(bar_size) + 24
+            pcie_text_width = len(f"Gen {link_gen}@{link_width}x / Gen {max_gen}@{max_width}x") + 24
+            mem_bus_text_width = len(f"{mem_bus_width} bit") + 24
+            processes_text_width = 0
+            if running_procs != "Unknown":
+                for proc in running_procs[:5]:
+                    proc_name = self._proc_name(proc.pid)
+                    vram_str = f"{(proc.usedGpuMemory / (1024**2)):.2f} MB"
+                    proc_text = f"{proc_name} -- ({vram_str}) ({proc.type}) "
+                    processes_text_width = max(processes_text_width, len(proc_text) + 11)
+            self.max_text_width = max(
+                62,
+                name_text_width,
+                driver_text_width,
+                compute_text_width,
+                bar_text_width,
+                pcie_text_width,
+                mem_bus_text_width,
+                processes_text_width,
+            )
 
             self._draw_header(stdscr)
             self.safe_addstr(stdscr, 3, 2, "Extra info/Process Monitor:", self.BLUE)
@@ -1146,10 +1206,7 @@ class EnviousApp:
                     for i in range(list_length):
                         color = self.curses.color_pair(i + 1) if self.use_color else self.WHITE
                         self.safe_addstr(stdscr, 13 + i, 4, f"{i + 1}", color)
-                        try:
-                            proc_name = self.psutil.Process(running_procs[i].pid).name()
-                        except (self.psutil.NoSuchProcess, self.psutil.AccessDenied):
-                            proc_name = "?"
+                        proc_name = self._proc_name(running_procs[i].pid)
                         self.safe_addstr(
                             stdscr,
                             13 + i,
