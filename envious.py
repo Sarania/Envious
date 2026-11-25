@@ -442,11 +442,12 @@ class EnviousApp:
             current_vram_percentage = (mem_info.used / mem_info.total) * 100
 
             # 24 is the width of the label text plus spaces for justification
-            gpu_text_width = len(f"{self.args.gpu_number} - {self.gpu_name}") + 24
-            core_text_width = len(core_clock_str) + 24
-            mem_text_width = len(mem_clock_str) + 24
-            power_text_width = len(power_str) + 24
-            vram_text_width = len(vram_str) + 24
+            text_width_offset = 25
+            gpu_text_width = len(f"{self.args.gpu_number} - {self.gpu_name}") + text_width_offset
+            core_text_width = len(core_clock_str) + text_width_offset
+            mem_text_width = len(mem_clock_str) + text_width_offset
+            power_text_width = len(power_str) + text_width_offset
+            vram_text_width = len(vram_str) + text_width_offset
             self.max_text_width = max(
                 gpu_text_width,
                 core_text_width,
@@ -1024,7 +1025,7 @@ class EnviousApp:
         """Display the help screen and wait for a key press."""
         stdscr.nodelay(False)
         stdscr.clear()
-        self.max_text_width = 60 if self.args.interactive else 54
+        self.max_text_width = 62 if self.args.interactive else 54
         self._draw_header(stdscr)
 
         row = 3
@@ -1057,7 +1058,7 @@ class EnviousApp:
             row += 1
 
             self.safe_addstr(stdscr, row, 4, "a", self.YELLOW)
-            self.safe_addstr(stdscr, row, 8, "- set fan control to automatic based on temperatue")
+            self.safe_addstr(stdscr, row, 8, "- set fan control to automatic based on temperature")
             row += 1
 
             if self.num_gpus > 1:
@@ -1091,7 +1092,6 @@ class EnviousApp:
 
     def _process_monitor(self, stdscr) -> None:
         """Show extended GPU information and running processes."""
-        self.max_text_width = 62
         key = ""
 
         # Static info
@@ -1155,21 +1155,23 @@ class EnviousApp:
                 running_procs = "Unknown"
 
             # 24 is the width of the label column plus spacing, labels start at x=4, values at x=28
-            name_text_width = len(self.gpu_name) + 24
-            driver_text_width = len(f"{driver_version} / {nvml_version}") + 24
+            # offset 31 produces the most pleasing result
+            text_width_offset = 31
+            name_text_width = len(self.gpu_name) + text_width_offset
+            driver_text_width = len(f"{driver_version} / {nvml_version}") + text_width_offset
             compute_text_width = len(f"CC: {compute_major}.{compute_minor} | CUDA: {cuda_major}.{cuda_minor}") + 24
-            bar_text_width = len(bar_size) + 24
-            pcie_text_width = len(f"Gen {link_gen}@{link_width}x / Gen {max_gen}@{max_width}x") + 24
-            mem_bus_text_width = len(f"{mem_bus_width} bit") + 24
+            bar_text_width = len(bar_size) + text_width_offset
+            pcie_text_width = len(f"Gen {link_gen}@{link_width}x / Gen {max_gen}@{max_width}x") + text_width_offset
+            mem_bus_text_width = len(f"{mem_bus_width} bit") + text_width_offset
             processes_text_width = 0
             if running_procs != "Unknown":
                 for proc in running_procs[:5]:
                     proc_name = self._proc_name(proc.pid)
                     vram_str = f"{(proc.usedGpuMemory / (1024**2)):.2f} MB"
                     proc_text = f"{proc_name} -- ({vram_str}) ({proc.type}) "
-                    processes_text_width = max(processes_text_width, len(proc_text) + 11)
+                    processes_text_width = max(processes_text_width, len(proc_text) + 14)
+
             self.max_text_width = max(
-                62,
                 name_text_width,
                 driver_text_width,
                 compute_text_width,

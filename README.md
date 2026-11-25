@@ -35,5 +35,5 @@ sudo envious --interactive
 man envious  # For full command list!
 ```
 <div align="center">
-  <img src="pm_screenshot.png?version=3" alt="Envious Process Monitor and Extra Info" />
+  <img src="pm_screenshot.png?version=4" alt="Envious Process Monitor and Extra Info" />
 </div>
